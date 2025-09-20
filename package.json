@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "upload:users": "node ./scripts/upload-users.mjs ./scripts/users.json"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

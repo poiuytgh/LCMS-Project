@@ -2,10 +2,15 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { Bell, LogOut } from "lucide-react"
+import { Bell, LogOut, Home } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/auth-provider"
 import { useNotifications } from "@/components/notification-provider"
 import { toast } from "sonner"
@@ -22,7 +27,7 @@ export function NavUser() {
       await signOut()
       toast.success("ออกจากระบบสำเร็จ")
       router.push("/")
-    } catch (error) {
+    } catch {
       toast.error("เกิดข้อผิดพลาดในการออกจากระบบ")
     }
   }
@@ -34,77 +39,97 @@ export function NavUser() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("th-TH", {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString("th-TH", {
       month: "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     })
-  }
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard" },
+    { href: "/dashboard", label: "แดชบอร์ด" },
     { href: "/dashboard/contracts", label: "สัญญาของฉัน" },
     { href: "/dashboard/bills", label: "บิลค่าเช่า" },
-    { href: "/dashboard/support", label: "แจ้งปัญหาการใช้งาน" },
+    { href: "/dashboard/support", label: "แจ้งปัญหา" },
     { href: "/dashboard/profile", label: "โปรไฟล์" },
   ]
 
   return (
-    <nav className="bg-secondary text-secondary-foreground">
+    <nav className="bg-secondary text-secondary-foreground border-b border-gray-700">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-14">
           {/* Navigation Links */}
           <div className="flex items-center space-x-8">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "text-sm font-medium hover:text-accent transition-colors",
-                  pathname === item.href && "text-accent",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "text-sm font-medium transition-colors",
+                    isActive
+                      ? "text-accent"
+                      : "text-gray-300 hover:text-accent"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </div>
 
-          {/* Right side - Notifications and Logout */}
+          {/* Right side - Homepage, Notifications, Logout */}
           <div className="flex items-center space-x-4">
+            <Link
+              href="/"
+              className={cn(
+                "flex items-center gap-1 text-sm font-medium transition-colors",
+                pathname === "/" ? "text-accent" : "text-gray-300 hover:text-accent"
+              )}
+            >
+              <Home className="h-4 w-4" />
+              Homepage
+            </Link>
+
+            {/* Notifications */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-secondary-foreground hover:text-accent relative">
-                  <Bell className="h-4 w-4" />
-                  <span className="ml-2">การแจ้งเตือน</span>
+                <button className="relative text-gray-300 hover:text-accent">
+                  <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
                     <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500">
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </Badge>
                   )}
-                </Button>
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <div className="p-4 border-b">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">การแจ้งเตือน</h3>
-                    {unreadCount > 0 && (
-                      <Button variant="ghost" size="sm" onClick={handleMarkAllAsRead}>
-                        อ่านทั้งหมด
-                      </Button>
-                    )}
-                  </div>
+              <DropdownMenuContent align="end" className="w-80 p-0">
+                <div className="p-4 border-b flex items-center justify-between">
+                  <h3 className="font-semibold">การแจ้งเตือน</h3>
+                  {unreadCount > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+                      อ่านทั้งหมด
+                    </Button>
+                  )}
                 </div>
                 <div className="max-h-96 overflow-y-auto">
                   {notifications.length > 0 ? (
                     notifications.slice(0, 10).map((notification) => (
-                      <DropdownMenuItem key={notification.id} className="p-4 cursor-pointer">
+                      <DropdownMenuItem
+                        key={notification.id}
+                        className="p-4 cursor-pointer hover:bg-accent/10"
+                      >
                         <div className="flex items-start space-x-3 w-full">
                           <div className="flex-1">
                             <p className="font-medium text-sm">{notification.title}</p>
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notification.message}</p>
-                            <p className="text-xs text-muted-foreground mt-1">{formatDate(notification.created_at)}</p>
+                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                              {notification.message}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {formatDate(notification.created_at)}
+                            </p>
                           </div>
                           {!notification.is_read && (
                             <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0"></div>
@@ -113,20 +138,23 @@ export function NavUser() {
                       </DropdownMenuItem>
                     ))
                   ) : (
-                    <div className="p-4 text-center text-muted-foreground">ไม่มีการแจ้งเตือน</div>
+                    <div className="p-4 text-center text-muted-foreground">
+                      ไม่มีการแจ้งเตือน
+                    </div>
                   )}
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Logout Button */}
             <Button
-              variant="ghost"
+              variant="destructive"
               size="sm"
               onClick={handleSignOut}
-              className="text-secondary-foreground hover:text-accent"
+              className="flex items-center gap-2 px-4"
             >
               <LogOut className="h-4 w-4" />
-              <span className="ml-2">ออกจากระบบ</span>
+              <span>ออกจากระบบ</span>
             </Button>
           </div>
         </div>

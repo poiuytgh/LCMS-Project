@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase"
+import { cookies } from "next/headers"
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,9 +10,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid notification IDs" }, { status: 400 })
     }
 
-    const supabase = createServerClient()
+    const supabase = createRouteHandlerClient({ cookies })
 
-    const { error } = await supabase.from("notifications").update({ is_read: true }).in("id", notificationIds)
+    // Ensure the caller is authenticated
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Only mark notifications that belong to the current user
+    const { error } = await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .eq("user_id", user.id)
+      .in("id", notificationIds)
 
     if (error) throw error
 

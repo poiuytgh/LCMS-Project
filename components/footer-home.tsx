@@ -15,9 +15,6 @@ export function FooterHome() {
             <Link href="/privacy" className="hover:text-accent transition-colors">
               นโยบายความเป็นส่วนตัว
             </Link>
-            <Link href="/contact" className="hover:text-accent transition-colors">
-              ติดต่อผู้ดูแลระบบ
-            </Link>
           </div>
         </div>
       </div>

@@ -1,15 +1,18 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
+import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { NavHome } from "@/components/nav-home"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { toast } from "sonner"
 
 export default function AdminLoginPage() {
@@ -19,16 +22,14 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
       const response = await fetch("/api/admin-login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       })
 
@@ -36,11 +37,11 @@ export default function AdminLoginPage() {
 
       if (response.ok) {
         toast.success("เข้าสู่ระบบผู้ดูแลสำเร็จ")
-        router.push("/admin")
+        router.push("/admin/dashboard")
       } else {
         toast.error(data.error || "เข้าสู่ระบบไม่สำเร็จ")
       }
-    } catch (error) {
+    } catch {
       toast.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ")
     } finally {
       setIsLoading(false)
@@ -49,12 +50,12 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <NavHome />
-
       <div className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-semibold">เข้าสู่ระบบผู้ดูแล</CardTitle>
+            <CardTitle className="text-2xl font-semibold">
+              เข้าสู่ระบบผู้ดูแล
+            </CardTitle>
             <CardDescription>สำหรับผู้ดูแลระบบเท่านั้น</CardDescription>
           </CardHeader>
           <CardContent>
@@ -82,19 +83,25 @@ export default function AdminLoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-0 top-0 h-full px-3 py-2 bg-transparent text-gray-500 hover:text-gray-700"
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
               </div>
 
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
+              <Button
+                type="submit"
+                className="w-full bg-primary hover:bg-primary/90"
+                disabled={isLoading}
+              >
                 {isLoading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
               </Button>
             </form>

@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import { supabase } from "@/lib/supabase"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { useAuth } from "@/components/auth-provider"
 
 interface Notification {
@@ -54,6 +54,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!user) return
 
     try {
+      const supabase = createClientComponentClient()
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
@@ -73,6 +74,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const subscribeToNotifications = () => {
     if (!user) return
 
+    const supabase = createClientComponentClient()
     const subscription = supabase
       .channel("notifications")
       .on(

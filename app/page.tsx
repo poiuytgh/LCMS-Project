@@ -5,9 +5,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { NavHome } from "@/components/nav-home"
 import { FooterHome } from "@/components/footer-home"
-import { Building2, FileText, CreditCard, HeadphonesIcon, Shield, Clock } from "lucide-react"
+import { Building2, FileText, CreditCard, HeadphonesIcon, Shield, Clock, CheckCircle2, LayoutDashboard } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
 
 export default function HomePage() {
+  const { user } = useAuth()
+
   return (
     <div className="min-h-screen flex flex-col">
       <NavHome />
@@ -16,7 +19,7 @@ export default function HomePage() {
       <section
         className="relative bg-cover bg-center bg-no-repeat py-24 px-4"
         style={{
-          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/images/hero-bg.jpg')",
+          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url('/images/hero-bg.jpg')",
         }}
       >
         <div className="container mx-auto text-center text-white">
@@ -29,17 +32,35 @@ export default function HomePage() {
             จัดการสัญญาเช่า บิลค่าเช่า และเอกสารต่างๆ ได้อย่างง่ายดายและปลอดภัย
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-3">
-              <Link href="/login">เข้าสู่ระบบ</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="text-lg px-8 py-3 bg-white/10 border-white text-white hover:bg-white hover:text-foreground"
-            >
-              <Link href="/register">สมัครสมาชิก</Link>
-            </Button>
+            {user ? (
+              <>
+                <div className="inline-flex items-center justify-center gap-2 bg-white/10 rounded-full px-4 py-2 mb-2 sm:mb-0">
+                  <CheckCircle2 className="h-4 w-4 text-green-300" />
+                  <span className="text-sm">คุณได้เข้าสู่ระบบแล้ว</span>
+                </div>
+                <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-3">
+                  <Link href="/dashboard" aria-label="ไปแดชบอร์ด">
+                    <LayoutDashboard className="h-5 w-5 mr-2" /> ไปแดชบอร์ด
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-3">
+                  <Link href="/login" aria-label="เข้าสู่ระบบ">
+                    เข้าสู่ระบบ
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="text-lg px-8 py-3 bg-white/10 border-white text-white hover:bg-white hover:text-foreground"
+                >
+                  <Link href="/register">สมัครสมาชิก</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </section>
@@ -63,7 +84,9 @@ export default function HomePage() {
                 <CardTitle>จัดการสัญญาเช่า</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription>ดูรายละเอียดสัญญา ดาวน์โหลดเอกสาร และติดตามสถานะสัญญาได้ตลอดเวลา</CardDescription>
+                <CardDescription>
+                  สร้าง/ต่ออายุ/สิ้นสุดสัญญา ติดตามวันหมดอายุ และผูกกับพื้นที่ได้อย่างชัดเจน
+                </CardDescription>
               </CardContent>
             </Card>
 
@@ -72,10 +95,12 @@ export default function HomePage() {
                 <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                   <CreditCard className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>บิลค่าเช่า</CardTitle>
+                <CardTitle>บิลค่าเช่าอัตโนมัติ</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription>ตรวจสอบบิลรายเดือน อัปโหลดสลิปการชำระเงิน และดาวน์โหลดใบเสร็จ</CardDescription>
+                <CardDescription>
+                  สร้างบิลรายเดือนรวมค่าน้ำ/ไฟ/อินเทอร์เน็ต ออกรายงานและใบเสร็จ PDF ได้
+                </CardDescription>
               </CardContent>
             </Card>
 
@@ -84,10 +109,12 @@ export default function HomePage() {
                 <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                   <HeadphonesIcon className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>แจ้งปัญหา</CardTitle>
+                <CardTitle>ศูนย์ช่วยเหลือ</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription>แจ้งปัญหาการใช้งานเว็บไซต์ และติดตามสถานะการแก้ไขแบบเรียลไทม์</CardDescription>
+                <CardDescription>
+                  ส่งคำร้อง แจ้งปัญหา และติดตามสถานะการแก้ไขได้แบบเรียลไทม์
+                </CardDescription>
               </CardContent>
             </Card>
 
@@ -96,22 +123,12 @@ export default function HomePage() {
                 <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                   <Shield className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>ความปลอดภัย</CardTitle>
+                <CardTitle>ปลอดภัย</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription>ระบบรักษาความปลอดภัยระดับสูง เข้ารหัสข้อมูลและเอกสารทั้งหมด</CardDescription>
-              </CardContent>
-            </Card>
-
-            <Card className="text-center hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <Clock className="h-6 w-6 text-primary" />
-                </div>
-                <CardTitle>แจ้งเตือนอัตโนมัติ</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CardDescription>รับการแจ้งเตือนเมื่อมีบิลใหม่ สัญญาใกล้หมดอายุ หรือมีการอัปเดต</CardDescription>
+                <CardDescription>
+                  จัดเก็บข้อมูลอย่างปลอดภัยด้วยนโยบายเข้าถึงตามบทบาทและการยืนยันตัวตน
+                </CardDescription>
               </CardContent>
             </Card>
 
@@ -120,10 +137,26 @@ export default function HomePage() {
                 <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
                   <Building2 className="h-6 w-6 text-primary" />
                 </div>
-                <CardTitle>จัดการพื้นที่</CardTitle>
+                <CardTitle>บริหารพื้นที่</CardTitle>
               </CardHeader>
               <CardContent>
-                <CardDescription>ดูข้อมูลพื้นที่เช่า รายละเอียดห้อง และสถานะการใช้งานแบบครบถ้วน</CardDescription>
+                <CardDescription>
+                  จัดการสถานะพื้นที่ ว่าง/ใช้งาน/ซ่อมบำรุง พร้อมรายละเอียดและประเภทพื้นที่
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <div className="mx-auto w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                  <Clock className="h-6 w-6 text-primary" />
+                </div>
+                <CardTitle>แจ้งเตือนทันเวลา</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription>
+                  เตือนกำหนดชำระ ค่าสาธารณูปโภค และสัญญาที่ใกล้หมดอายุ
+                </CardDescription>
               </CardContent>
             </Card>
           </div>
@@ -133,22 +166,25 @@ export default function HomePage() {
       {/* CTA Section */}
       <section className="py-16 px-4 bg-primary text-primary-foreground">
         <div className="container mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">พร้อมเริ่มต้นแล้วหรือยัง?</h2>
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">เริ่มใช้งานระบบจัดการสัญญาเช่าได้เลย</h2>
           <p className="text-lg mb-8 opacity-90 max-w-2xl mx-auto">
-            เข้าร่วมกับเราวันนี้และสัมผัสประสบการณ์การจัดการสัญญาเช่าที่ง่ายและมีประสิทธิภาพ
+            สร้างบัญชีใหม่หรือเข้าสู่ระบบเพื่อจัดการพื้นที่และสัญญาของคุณ
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button asChild size="lg" variant="secondary" className="text-lg px-8 py-3">
-              <Link href="/register">สมัครสมาชิกฟรี</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="text-lg px-8 py-3 border-white text-white hover:bg-white hover:text-primary bg-transparent"
-            >
-              <Link href="/role">เลือกประเภทผู้ใช้</Link>
-            </Button>
+            {user ? (
+              <Button asChild size="lg" className="text-lg px-8 py-3 bg-white text-primary hover:bg-gray-100">
+                <Link href="/dashboard">ไปแดชบอร์ด</Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild size="lg" variant="secondary" className="text-lg px-8 py-3">
+                  <Link href="/register">สมัครสมาชิก</Link>
+                </Button>
+                <Button asChild size="lg" className="text-lg px-8 py-3 bg-white text-primary hover:bg-gray-100">
+                  <Link href="/login">เข้าสู่ระบบ</Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </section>

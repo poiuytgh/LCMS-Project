@@ -1,0 +1,19 @@
+[
+  {
+    "email": "admin@example.com",
+    "password": "Admin#12345",
+    "first_name": "Admin",
+    "last_name": "User",
+    "phone": "090-000-0000",
+    "avatar_url": null
+  },
+  {
+    "email": "tenant1@example.com",
+    "password": "Tenant#12345",
+    "first_name": "Tenant",
+    "last_name": "One",
+    "phone": null,
+    "avatar_url": null
+  }
+]
+

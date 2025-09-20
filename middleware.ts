@@ -16,7 +16,7 @@ export async function middleware(req: NextRequest) {
     const adminSession = req.cookies.get("admin_session")?.value
 
     if (!adminSession || adminSession !== "true") {
-      return NextResponse.redirect(new URL("/role", req.url))
+      return NextResponse.redirect(new URL("/login/admin", req.url))
     }
   }
 
@@ -32,9 +32,17 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", req.url))
   }
 
+  // Redirect authenticated admin away from admin login page
+  if (req.nextUrl.pathname === "/login/admin") {
+    const adminSession = req.cookies.get("admin_session")?.value
+    if (adminSession === "true") {
+      return NextResponse.redirect(new URL("/admin", req.url))
+    }
+  }
+
   return res
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/login", "/register"],
+  matcher: ["/admin/:path*", "/dashboard/:path*", "/login", "/register", "/login/admin"],
 }

@@ -17,7 +17,8 @@ export function NavAdmin() {
       const response = await fetch("/api/admin-logout", { method: "POST" })
       if (response.ok) {
         toast.success("ออกจากระบบสำเร็จ")
-        router.push("/")
+        // ✅ เปลี่ยนให้กลับไป login admin
+        router.push("/login/admin")
       } else {
         toast.error("เกิดข้อผิดพลาดในการออกจากระบบ")
       }
@@ -27,7 +28,7 @@ export function NavAdmin() {
   }
 
   const navItems = [
-    { href: "/admin", label: "Dashboard" },
+    { href: "/admin/dashboard", label: "Dashboard" },
     { href: "/admin/contracts", label: "สัญญาเช่า" },
     { href: "/admin/spaces", label: "พื้นที่" },
     { href: "/admin/bills", label: "บิลค่าเช่า" },

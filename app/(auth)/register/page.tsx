@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -12,10 +11,11 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { NavHome } from "@/components/nav-home"
-import { supabase } from "@/lib/supabase"
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { toast } from "sonner"
 
 export default function RegisterPage() {
+  const supabase = createClientComponentClient()
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -37,7 +37,6 @@ export default function RegisterPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    // Validation
     if (formData.password !== formData.confirmPassword) {
       toast.error("รหัสผ่านไม่ตรงกัน")
       setIsLoading(false)
@@ -69,7 +68,6 @@ export default function RegisterPage() {
       }
 
       if (data.user) {
-        // Create profile record
         const { error: profileError } = await supabase.from("profiles").insert({
           id: data.user.id,
           first_name: formData.firstName,
@@ -148,15 +146,13 @@ export default function RegisterPage() {
                     onChange={(e) => handleInputChange("password", e.target.value)}
                     required
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+                  </button>
                 </div>
               </div>
 
@@ -171,15 +167,13 @@ export default function RegisterPage() {
                     onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
                     required
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   >
                     {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+                  </button>
                 </div>
               </div>
 

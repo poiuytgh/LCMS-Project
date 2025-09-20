@@ -224,18 +224,18 @@ CREATE POLICY "Users can view own documents" ON public.documents
     auth.uid() = uploaded_by OR
     (related_type = 'contract' AND EXISTS (
       SELECT 1 FROM public.contracts 
-      WHERE contracts.id::text = related_id 
+      WHERE contracts.id = related_id 
       AND contracts.tenant_id = auth.uid()
     )) OR
     (related_type = 'bill' AND EXISTS (
       SELECT 1 FROM public.bills 
       JOIN public.contracts ON contracts.id = bills.contract_id
-      WHERE bills.id::text = related_id 
+      WHERE bills.id = related_id 
       AND contracts.tenant_id = auth.uid()
     )) OR
     (related_type = 'ticket' AND EXISTS (
       SELECT 1 FROM public.support_tickets 
-      WHERE support_tickets.id::text = related_id 
+      WHERE support_tickets.id = related_id 
       AND support_tickets.user_id = auth.uid()
     ))
   );

@@ -8,7 +8,13 @@ import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { NavHome } from "@/components/nav-home"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
@@ -16,6 +22,8 @@ import { toast } from "sonner"
 
 export default function RegisterPage() {
   const supabase = createClientComponentClient()
+  const router = useRouter()
+
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -24,10 +32,10 @@ export default function RegisterPage() {
     confirmPassword: "",
     acceptTerms: false,
   })
+
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -54,7 +62,9 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/dashboard`,
+          emailRedirectTo:
+            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ||
+            `${window.location.origin}/dashboard`,
           data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
@@ -96,10 +106,14 @@ export default function RegisterPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-semibold">สมัครสมาชิก</CardTitle>
-            <CardDescription>สร้างบัญชีใหม่เพื่อใช้งานระบบสัญญาเช่าพื้นที่</CardDescription>
+            <CardDescription>
+              สร้างบัญชีใหม่เพื่อใช้งานระบบสัญญาเช่าพื้นที่
+            </CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleRegister} className="space-y-4">
+              {/* ชื่อ + นามสกุล */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">ชื่อ</Label>
@@ -107,22 +121,28 @@ export default function RegisterPage() {
                     id="firstName"
                     placeholder="ชื่อ"
                     value={formData.firstName}
-                    onChange={(e) => handleInputChange("firstName", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("firstName", e.target.value)
+                    }
                     required
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="lastName">นามสกุล</Label>
                   <Input
                     id="lastName"
                     placeholder="นามสกุล"
                     value={formData.lastName}
-                    onChange={(e) => handleInputChange("lastName", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("lastName", e.target.value)
+                    }
                     required
                   />
                 </div>
               </div>
 
+              {/* อีเมล */}
               <div className="space-y-2">
                 <Label htmlFor="email">อีเมล</Label>
                 <Input
@@ -135,6 +155,7 @@ export default function RegisterPage() {
                 />
               </div>
 
+              {/* รหัสผ่าน */}
               <div className="space-y-2">
                 <Label htmlFor="password">รหัสผ่าน</Label>
                 <div className="relative">
@@ -143,7 +164,9 @@ export default function RegisterPage() {
                     type={showPassword ? "text" : "password"}
                     placeholder="กรอกรหัสผ่าน"
                     value={formData.password}
-                    onChange={(e) => handleInputChange("password", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("password", e.target.value)
+                    }
                     required
                   />
                   <button
@@ -151,11 +174,16 @@ export default function RegisterPage() {
                     className="absolute right-0 top-0 h-full px-3 py-2"
                     onClick={() => setShowPassword(!showPassword)}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               </div>
 
+              {/* ยืนยันรหัสผ่าน */}
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">ยืนยันรหัสผ่าน</Label>
                 <div className="relative">
@@ -164,24 +192,36 @@ export default function RegisterPage() {
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="ยืนยันรหัสผ่าน"
                     value={formData.confirmPassword}
-                    onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("confirmPassword", e.target.value)
+                    }
                     required
                   />
                   <button
                     type="button"
                     className="absolute right-0 top-0 h-full px-3 py-2"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    onClick={() =>
+                      setShowConfirmPassword(!showConfirmPassword)
+                    }
                   >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
               </div>
 
+              {/* ยอมรับเงื่อนไข */}
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="terms"
                   checked={formData.acceptTerms}
-                  onCheckedChange={(checked) => handleInputChange("acceptTerms", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleInputChange("acceptTerms", checked as boolean)
+                  }
+                  className="border-2 border-gray-400 data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=checked]:text-white"
                 />
                 <Label htmlFor="terms" className="text-sm">
                   ยอมรับ{" "}
@@ -189,13 +229,21 @@ export default function RegisterPage() {
                     เงื่อนไขการใช้งาน
                   </Link>{" "}
                   และ{" "}
-                  <Link href="/privacy" className="text-primary hover:underline">
+                  <Link
+                    href="/privacy"
+                    className="text-primary hover:underline"
+                  >
                     นโยบายความเป็นส่วนตัว
                   </Link>
                 </Label>
               </div>
 
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
+              {/* ปุ่มสมัครสมาชิก */}
+              <Button
+                type="submit"
+                className="w-full bg-primary hover:bg-primary/90"
+                disabled={isLoading}
+              >
                 {isLoading ? "กำลังสมัครสมาชิก..." : "สมัครสมาชิก"}
               </Button>
             </form>

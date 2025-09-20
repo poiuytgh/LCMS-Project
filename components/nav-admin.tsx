@@ -28,7 +28,7 @@ export function NavAdmin() {
   }
 
   const navItems = [
-    { href: "/admin/dashboard", label: "Dashboard" },
+    { href: "/admin/dashboard", label: "แดชบอร์ด" },
     { href: "/admin/contracts", label: "สัญญาเช่า" },
     { href: "/admin/spaces", label: "พื้นที่" },
     { href: "/admin/bills", label: "บิลค่าเช่า" },

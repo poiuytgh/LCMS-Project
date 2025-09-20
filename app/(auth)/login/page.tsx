@@ -38,7 +38,6 @@ export default function LoginPage() {
 
       if (data.user) {
         toast.success("เข้าสู่ระบบสำเร็จ")
-        // Use replace to avoid returning to login on back
         router.replace("/dashboard")
       }
     } catch (error) {
@@ -97,17 +96,12 @@ export default function LoginPage() {
                 {isLoading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
               </Button>
             </form>
-
-            <div className="mt-6 text-center space-y-2">
-              <Link href="/forgot-password" className="text-sm text-muted-foreground hover:text-primary">
-                ลืมรหัสผ่าน?
+            
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              ยังไม่มีบัญชี?{" "}
+              <Link href="/register" className="text-primary hover:underline">
+                สมัครสมาชิก
               </Link>
-              <div className="text-sm text-muted-foreground">
-                ยังไม่มีบัญชี?{" "}
-                <Link href="/register" className="text-primary hover:underline">
-                  สมัครสมาชิก
-                </Link>
-              </div>
             </div>
           </CardContent>
         </Card>

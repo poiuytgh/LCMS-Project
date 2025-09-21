@@ -4,25 +4,31 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { Bell, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { useNotifications } from "@/components/notification-provider"
 
 export function NavAdmin() {
   const pathname = usePathname()
   const router = useRouter()
+  const { unreadCount } = useNotifications()
 
   const handleSignOut = async () => {
     try {
       const response = await fetch("/api/admin-logout", { method: "POST" })
       if (response.ok) {
         toast.success("ออกจากระบบสำเร็จ")
-        // ✅ เปลี่ยนให้กลับไป login admin
         router.push("/login/admin")
       } else {
         toast.error("เกิดข้อผิดพลาดในการออกจากระบบ")
       }
-    } catch (error) {
+    } catch {
       toast.error("เกิดข้อผิดพลาดในการออกจากระบบ")
     }
   }
@@ -38,50 +44,64 @@ export function NavAdmin() {
   ]
 
   return (
-    <nav className="bg-secondary text-secondary-foreground">
-      <div className="container mx-auto px-4">
+    <nav className="bg-secondary border-b border-gray-700 shadow-sm">
+      <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-14">
           {/* Navigation Links */}
-          <div className="flex items-center space-x-8">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "text-sm font-medium hover:text-accent transition-colors",
-                  pathname === item.href && "text-accent",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+          <div className="flex items-center space-x-6">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "px-2 py-1 text-sm font-medium transition-colors",
+                    isActive
+                      ? "text-white font-semibold"
+                      : "text-gray-400 hover:text-white"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
           </div>
 
           {/* Right side - Notifications and Logout */}
           <div className="flex items-center space-x-4">
+            {/* Notifications */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-secondary-foreground hover:text-accent">
-                  <Bell className="h-4 w-4" />
-                  <span className="ml-2">การแจ้งเตือน</span>
-                </Button>
+                <button className="relative text-gray-300 hover:text-white transition">
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <Badge className="absolute -top-1 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500 text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Badge>
+                  )}
+                </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <div className="p-4">
-                  <h3 className="font-semibold mb-2">การแจ้งเตือนผู้ดูแล</h3>
-                  <p className="text-sm text-muted-foreground">ไม่มีการแจ้งเตือนใหม่</p>
+
+              <DropdownMenuContent align="end" className="w-80 p-0">
+                <div className="p-4 border-b">
+                  <h3 className="font-semibold">การแจ้งเตือนผู้ดูแล</h3>
+                  <p className="text-sm text-muted-foreground">
+                    ไม่มีการแจ้งเตือนใหม่
+                  </p>
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Logout */}
             <Button
-              variant="ghost"
+              variant="destructive"
               size="sm"
               onClick={handleSignOut}
-              className="text-secondary-foreground hover:text-accent"
+              className="flex items-center gap-2 px-4"
             >
               <LogOut className="h-4 w-4" />
-              <span className="ml-2">ออกจากระบบ</span>
+              <span>ออกจากระบบ</span>
             </Button>
           </div>
         </div>

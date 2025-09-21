@@ -70,8 +70,8 @@ export function NavUser() {
                   className={cn(
                     "text-sm font-medium transition-colors",
                     isActive
-                      ? "text-accent"
-                      : "text-gray-300 hover:text-accent"
+                      ? "text-white font-semibold"
+                      : "text-gray-400 hover:text-white"
                   )}
                 >
                   {item.label}
@@ -82,11 +82,14 @@ export function NavUser() {
 
           {/* Right side - Homepage, Notifications, Logout */}
           <div className="flex items-center space-x-4">
+            {/* Homepage */}
             <Link
               href="/"
               className={cn(
                 "flex items-center gap-1 text-sm font-medium transition-colors",
-                pathname === "/" ? "text-accent" : "text-gray-300 hover:text-accent"
+                pathname === "/"
+                  ? "text-white font-semibold"
+                  : "text-gray-300 hover:text-white"
               )}
             >
               <Home className="h-4 w-4" />
@@ -96,7 +99,7 @@ export function NavUser() {
             {/* Notifications */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="relative text-gray-300 hover:text-accent">
+                <button className="relative text-gray-300 hover:text-white transition">
                   <Bell className="h-5 w-5" />
                   {unreadCount > 0 && (
                     <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-red-500">
@@ -105,15 +108,21 @@ export function NavUser() {
                   )}
                 </button>
               </DropdownMenuTrigger>
+
               <DropdownMenuContent align="end" className="w-80 p-0">
                 <div className="p-4 border-b flex items-center justify-between">
                   <h3 className="font-semibold">การแจ้งเตือน</h3>
                   {unreadCount > 0 && (
-                    <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleMarkAllAsRead}
+                    >
                       อ่านทั้งหมด
                     </Button>
                   )}
                 </div>
+
                 <div className="max-h-96 overflow-y-auto">
                   {notifications.length > 0 ? (
                     notifications.slice(0, 10).map((notification) => (
@@ -123,7 +132,9 @@ export function NavUser() {
                       >
                         <div className="flex items-start space-x-3 w-full">
                           <div className="flex-1">
-                            <p className="font-medium text-sm">{notification.title}</p>
+                            <p className="font-medium text-sm">
+                              {notification.title}
+                            </p>
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                               {notification.message}
                             </p>

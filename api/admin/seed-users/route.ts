@@ -1,15 +1,62 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase"
+import { randomUUID } from "crypto"
 
-// POST /api/admin/seed-users
-// Body: { users: [{ email, password?, first_name, last_name, phone?, avatar_url? }, ...], secret: string }
+type SeedUser = {
+  email: string
+  password?: string
+  first_name: string
+  last_name: string
+  phone?: string | null
+  avatar_url?: string | null
+}
+
+type ResultRow = {
+  email: string
+  status: string
+  userId?: string
+  error?: string
+}
+
+function makeResult(row: {
+  email: string
+  status: string
+  userId?: string | null
+  error?: string
+}): ResultRow {
+  const out: ResultRow = { email: row.email, status: row.status }
+  if (typeof row.userId === "string") out.userId = row.userId
+  if (row.error) out.error = row.error
+  return out
+}
+
+async function findUserIdByEmail(
+  supabase: ReturnType<typeof createServerClient>,
+  email: string,
+): Promise<string | null> {
+  let page = 1
+  const perPage = 1000
+  while (true) {
+    const list = await supabase.auth.admin.listUsers({ page, perPage })
+    const users = list.data?.users ?? []
+    const hit = users.find((x) => (x.email || "").toLowerCase() === email.toLowerCase())
+    if (hit) return hit.id
+    if (users.length < perPage) break
+    page += 1
+  }
+  return null
+}
+
 export async function POST(req: Request) {
   try {
-    const { users, secret } = await req.json()
-
-    if (!secret || secret !== process.env.ADMIN_SEED_SECRET) {
+    // ✅ เช็ก secret จาก Authorization header
+    const authHeader = req.headers.get("authorization")
+    if (!authHeader || authHeader !== `Bearer ${process.env.ADMIN_SEED_SECRET}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const body = await req.json()
+    const users: SeedUser[] = body?.users
 
     if (!Array.isArray(users) || users.length === 0) {
       return NextResponse.json({ error: "users must be a non-empty array" }, { status: 400 })
@@ -17,87 +64,112 @@ export async function POST(req: Request) {
 
     const supabase = createServerClient()
 
-    const results: Array<{ email: string; status: string; userId?: string; error?: string }> = []
+    const results: ResultRow[] = []
 
     for (const u of users) {
       const { email, password, first_name, last_name, phone, avatar_url } = u || {}
+
       if (!email || !first_name || !last_name) {
-        results.push({ email: email || "", status: "skipped", error: "missing required fields" })
+        results.push(makeResult({
+          email: email || "",
+          status: "skipped",
+          error: "missing required fields",
+        }))
         continue
       }
-      // Try create user via admin API
-      const { data, error } = await supabase.auth.admin.createUser({
+
+      // 1) พยายามสร้าง user ก่อน
+      const generatedPassword = password || `${randomUUID()}Aa#1`
+      const { data, error: createErr } = await supabase.auth.admin.createUser({
         email,
-        password: password || Math.random().toString(36).slice(2) + "Aa#1",
+        password: generatedPassword,
         email_confirm: true,
         user_metadata: { first_name, last_name, phone, avatar_url },
       })
 
-      if (error) {
-        // Try to find existing user then upsert profile
+      if (createErr) {
+        // 2) ถ้าสร้างไม่สำเร็จ (เช่น email ซ้ำ) → หา user เดิมด้วย listUsers
         try {
-          let page = 1
-          const perPage = 1000
-          let foundId: string | null = null
-          while (true) {
-            const list = await supabase.auth.admin.listUsers({ page, perPage })
-            const hit = list.data?.users?.find(
-              (x) => (x.email || "").toLowerCase() === email.toLowerCase()
-            )
-            if (hit) {
-              foundId = hit.id
-              break
-            }
-            if (!list.data || list.data.users.length < perPage) break
-            page += 1
+          const foundId = await findUserIdByEmail(supabase, email)
+          if (!foundId) {
+            results.push(makeResult({
+              email,
+              status: "error",
+              error: createErr.message,
+            }))
+            continue
           }
 
-          if (foundId) {
-            const { error: upsertErr } = await supabase.from("profiles").upsert(
-              {
-                id: foundId,
-                first_name,
-                last_name,
-                phone: phone ?? null,
-                avatar_url: avatar_url ?? null,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "id" }
-            )
-            if (upsertErr) {
-              results.push({ email, status: "error", error: upsertErr.message })
-            } else {
-              results.push({ email, status: "updated", userId: foundId })
-            }
-          } else {
-            results.push({ email, status: "error", error: error.message })
-          }
-        } catch (e: any) {
-          results.push({ email, status: "error", error: e?.message || String(e) })
-        }
-      } else {
-        const userId = data?.user?.id
-        if (userId) {
-          // Ensure profile exists
+          // มี user เดิม → upsert โปรไฟล์
           const { error: upsertErr } = await supabase.from("profiles").upsert(
             {
-              id: userId,
+              id: foundId,
               first_name,
               last_name,
               phone: phone ?? null,
               avatar_url: avatar_url ?? null,
               updated_at: new Date().toISOString(),
             },
-            { onConflict: "id" }
+            { onConflict: "id" },
           )
           if (upsertErr) {
-            results.push({ email, status: "created_profile_error", userId, error: upsertErr.message })
+            results.push(makeResult({
+              email,
+              status: "error",
+              userId: foundId,
+              error: upsertErr.message,
+            }))
           } else {
-            results.push({ email, status: "created", userId })
+            results.push(makeResult({
+              email,
+              status: "updated",
+              userId: foundId,
+            }))
           }
-        } else {
-          results.push({ email, status: "created_no_id" })
+        } catch (e: any) {
+          results.push(makeResult({
+            email,
+            status: "error",
+            error: e?.message || String(e),
+          }))
         }
+        continue
+      }
+
+      // 3) ถ้าสร้างสำเร็จ → upsert โปรไฟล์ให้เรียบร้อย
+      const userId = data?.user?.id || null
+      if (!userId) {
+        results.push(makeResult({
+          email,
+          status: "created_no_id",
+        }))
+        continue
+      }
+
+      const { error: upsertErr } = await supabase.from("profiles").upsert(
+        {
+          id: userId,
+          first_name,
+          last_name,
+          phone: phone ?? null,
+          avatar_url: avatar_url ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      )
+      if (upsertErr) {
+        results.push(makeResult({
+          email,
+          status: "created_profile_error",
+          userId,
+          error: upsertErr.message,
+        }))
+      } else {
+        results.push(makeResult({
+          email,
+          status: "created",
+          userId,
+        }))
       }
     }
 

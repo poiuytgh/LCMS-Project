@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { NavAdmin } from "@/components/nav-admin"
 import { FileText, Building2, CreditCard, AlertCircle, TrendingUp, Calendar, DollarSign } from "lucide-react"
-import { createServerClient } from "@/lib/supabase"
 import { toast } from "sonner"
 
 interface DashboardStats {
@@ -67,132 +66,23 @@ export default function AdminDashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      const supabase = createServerClient()
+      const res = await fetch("/api/admin/dashboard/summary", {
+        headers: {
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET}`,
+        },
+      })
 
-      // Fetch contract stats
-      const { data: contracts } = await supabase.from("contracts").select("status")
-
-      const contractStats = {
-        total: contracts?.length || 0,
-        active: contracts?.filter((c) => c.status === "active").length || 0,
-        expiring: contracts?.filter((c) => c.status === "expiring").length || 0,
-        expired: contracts?.filter((c) => c.status === "expired").length || 0,
-      }
-
-      // Fetch space stats
-      const { data: spaces } = await supabase.from("spaces").select("status")
-
-      const spaceStats = {
-        total: spaces?.length || 0,
-        available: spaces?.filter((s) => s.status === "available").length || 0,
-        occupied: spaces?.filter((s) => s.status === "occupied").length || 0,
-        maintenance: spaces?.filter((s) => s.status === "maintenance").length || 0,
-      }
-
-      // Fetch finance stats (current month)
-      const currentMonth = new Date().toISOString().slice(0, 7) + "-01"
-      const { data: bills } = await supabase
-        .from("bills")
-        .select("status, total_amount")
-        .gte("billing_month", currentMonth)
-
-      const financeStats = {
-        monthlyRevenue: bills?.reduce((sum, bill) => sum + (bill.status === "paid" ? bill.total_amount : 0), 0) || 0,
-        paid: bills?.filter((b) => b.status === "paid").length || 0,
-        unpaid: bills?.filter((b) => b.status === "unpaid").length || 0,
-        pending: bills?.filter((b) => b.status === "pending").length || 0,
-      }
-
-      // Fetch support stats
-      const { data: tickets } = await supabase.from("support_tickets").select("status, created_at")
-
-      const supportStats = {
-        total: tickets?.length || 0,
-        new: tickets?.filter((t) => t.status === "new").length || 0,
-        needInfo: tickets?.filter((t) => t.status === "need_info").length || 0,
-        overdue:
-          tickets?.filter((t) => {
-            const daysSinceCreated = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24))
-            return ["new", "acknowledged"].includes(t.status) && daysSinceCreated > 3
-          }).length || 0,
-      }
-
-      // Fetch expiring contracts (top 5)
-      const { data: expiringData } = await supabase
-        .from("contracts")
-        .select(`
-          id,
-          end_date,
-          profiles!contracts_tenant_id_fkey (
-            first_name,
-            last_name
-          ),
-          spaces (
-            name
-          )
-        `)
-        .eq("status", "expiring")
-        .order("end_date", { ascending: true })
-        .limit(5)
-
-      const expiring =
-  expiringData?.map((contract) => ({
-    id: contract.id,
-    tenant_name: contract.profiles?.[0]
-      ? `${contract.profiles[0].first_name} ${contract.profiles[0].last_name}`
-      : "ไม่ระบุ",
-    space_name: contract.spaces?.[0]?.name || "ไม่ระบุ",
-    end_date: contract.end_date,
-  })) || []
-
-
-      // Fetch overdue bills (top 5)
-      const { data: overdueData } = await supabase
-        .from("bills")
-        .select(`
-          id,
-          total_amount,
-          due_date,
-          contracts!bills_contract_id_fkey (
-            profiles!contracts_tenant_id_fkey (
-              first_name,
-              last_name
-            ),
-            spaces (
-              name
-            )
-          )
-        `)
-        .eq("status", "unpaid")
-        .lt("due_date", new Date().toISOString())
-        .order("due_date", { ascending: true })
-        .limit(5)
-
-      const overdue =
-  overdueData?.map((bill) => {
-    const contract = bill.contracts?.[0] // 👉 ดึง element แรกออกมา
-    const profile = contract?.profiles?.[0]
-    const space = contract?.spaces?.[0]
-
-    return {
-      id: bill.id,
-      tenant_name: profile ? `${profile.first_name} ${profile.last_name}` : "ไม่ระบุ",
-      space_name: space?.name || "ไม่ระบุ",
-      total_amount: bill.total_amount,
-      due_date: bill.due_date,
-    }
-  }) || []
-
-
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
 
       setStats({
-        contracts: contractStats,
-        spaces: spaceStats,
-        finance: financeStats,
-        support: supportStats,
+        contracts: data.contracts,
+        spaces: data.spaces,
+        finance: data.finance,
+        support: data.support,
       })
-      setExpiringContracts(expiring)
-      setOverdueBills(overdue)
+      setExpiringContracts(data.expiringContracts || [])
+      setOverdueBills(data.overdueBills || [])
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
       toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูล")
@@ -201,20 +91,15 @@ export default function AdminDashboardPage() {
     }
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH", {
-      style: "currency",
-      currency: "THB",
-    }).format(amount)
-  }
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(amount)
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("th-TH", {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString("th-TH", {
       year: "numeric",
       month: "short",
       day: "numeric",
     })
-  }
 
   if (loading) {
     return (

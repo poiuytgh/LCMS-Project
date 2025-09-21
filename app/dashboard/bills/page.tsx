@@ -93,22 +93,30 @@ export default function BillsPage() {
           due_date,
           paid_date,
           created_at,
-          contracts!inner (
+          contract:contracts!inner (
             id,
             tenant_id,
-            spaces (
+            space:spaces (
               name,
               code
             )
           )
         `,
         )
-        .eq("contracts.tenant_id", user?.id)
+        .eq("contract.tenant_id", user?.id)
         .order("billing_month", { ascending: false })
 
       if (error) throw error
 
-      setBills(data || [])
+      setBills((data || []).map((bill: any) => ({
+        ...bill,
+        contract: bill.contract?.[0]
+        ? {
+          id: bill.contract[0].id,
+          space: bill.contract[0].space?.[0] || { name: "", code: "" },}
+          : { id: "", space: { name: "", code: "" } },
+        })))
+
     } catch (error) {
       console.error("Error fetching bills:", error)
       toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูลบิล")
@@ -346,13 +354,14 @@ export default function BillsPage() {
                             </DialogContent>
                           </Dialog>
                         )}
-
                         {bill.status === "paid" && (
-                          <Button size="sm" variant="outline" className="flex-1 bg-transparent">
+                          <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
+                            <a href={`/api/user/bills/${bill.id}/receipt`} target="_blank" rel="noopener">
                             <Download className="h-4 w-4 mr-1" />
                             ดาวน์โหลดใบเสร็จ
-                          </Button>
-                        )}
+                            </a>
+                            </Button>
+                          )}
                       </div>
                     </div>
                   </CardContent>
@@ -483,55 +492,30 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
     const file = event.target.files?.[0]
     if (!file) return
 
-    // Validate file type
-    const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "application/pdf"]
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("รองรับเฉพาะไฟล์ JPG, PNG หรือ PDF เท่านั้น")
-      return
-    }
-
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("ขนาดไฟล์ต้องไม่เกิน 5MB")
-      return
-    }
-
-    setUploading(true)
-
     try {
-      // Upload file to Supabase Storage
+      setUploading(true)
       const fileExt = file.name.split(".").pop()
       const fileName = `${billId}-${Date.now()}.${fileExt}`
       const filePath = `payment-slips/${fileName}`
 
-      const { error: uploadError } = await supabase.storage.from("documents").upload(filePath, file)
+      const { error: uploadError } = await supabase.storage.from("payment-slips").upload(filePath, file)
 
       if (uploadError) throw uploadError
 
-      // Get public URL
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("documents").getPublicUrl(filePath)
-
-      // Save payment slip record
-      const { error: insertError } = await supabase.from("payment_slips").insert({
-        bill_id: billId,
-        file_url: publicUrl,
-        file_name: file.name,
-        notes: notes || null,
-      })
+      const { error: insertError } = await supabase.from("payment_slips").insert([
+        {
+          bill_id: billId,
+          file_path: filePath,
+          notes,
+        },
+      ])
 
       if (insertError) throw insertError
 
-      // Update bill status to pending
-      const { error: updateError } = await supabase.from("bills").update({ status: "pending" }).eq("id", billId)
-
-      if (updateError) throw updateError
-
-      toast.success("อัปโหลดสลิปการชำระเงินสำเร็จ")
+      toast.success("อัปโหลดสลิปเรียบร้อยแล้ว")
       onSuccess()
     } catch (error) {
-      console.error("Error uploading payment slip:", error)
+      console.error("Error uploading slip:", error)
       toast.error("เกิดข้อผิดพลาดในการอัปโหลดสลิป")
     } finally {
       setUploading(false)
@@ -540,40 +524,16 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
 
   return (
     <div className="space-y-4">
-      <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
-        <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-        <div className="space-y-2">
-          <p className="text-sm font-medium">อัปโหลดสลิปการชำระเงิน</p>
-          <p className="text-xs text-muted-foreground">รองรับไฟล์ JPG, PNG, PDF ขนาดไม่เกิน 5MB</p>
-        </div>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/jpg,application/pdf"
-          onChange={handleFileUpload}
-          disabled={uploading}
-          className="hidden"
-          id="payment-slip-upload"
-        />
-        <label
-          htmlFor="payment-slip-upload"
-          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 mt-4 cursor-pointer"
-        >
-          {uploading ? "กำลังอัปโหลด..." : "เลือกไฟล์"}
-        </label>
-      </div>
-
-      <div className="space-y-2">
-        <label htmlFor="notes" className="text-sm font-medium">
-          หมายเหตุ (ไม่บังคับ)
-        </label>
-        <Input
-          id="notes"
-          placeholder="เพิ่มหมายเหตุเกี่ยวกับการชำระเงิน..."
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          disabled={uploading}
-        />
-      </div>
+      <Input
+        type="text"
+        placeholder="หมายเหตุ (ถ้ามี)"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+      />
+      <Input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
+      <Button disabled={uploading} className="w-full">
+        {uploading ? "กำลังอัปโหลด..." : "อัปโหลดสลิป"}
+      </Button>
     </div>
   )
 }

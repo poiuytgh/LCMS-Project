@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -108,15 +107,17 @@ export default function BillsPage() {
 
       if (error) throw error
 
-      setBills((data || []).map((bill: any) => ({
-        ...bill,
-        contract: bill.contract?.[0]
-        ? {
-          id: bill.contract[0].id,
-          space: bill.contract[0].space?.[0] || { name: "", code: "" },}
-          : { id: "", space: { name: "", code: "" } },
-        })))
-
+      setBills(
+        (data || []).map((bill: any) => ({
+          ...bill,
+          contract: bill.contract?.[0]
+            ? {
+                id: bill.contract[0].id,
+                space: bill.contract[0].space?.[0] || { name: "", code: "" },
+              }
+            : { id: "", space: { name: "", code: "" } },
+        })),
+      )
     } catch (error) {
       console.error("Error fetching bills:", error)
       toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูลบิล")
@@ -128,7 +129,6 @@ export default function BillsPage() {
   const filterBills = () => {
     let filtered = bills
 
-    // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(
         (bill) =>
@@ -140,7 +140,6 @@ export default function BillsPage() {
       )
     }
 
-    // Filter by status
     if (statusFilter !== "all") {
       filtered = filtered.filter((bill) => bill.status === statusFilter)
     }
@@ -185,6 +184,14 @@ export default function BillsPage() {
 
   const isOverdue = (dueDate: string, status: string) => {
     return status === "unpaid" && new Date(dueDate) < new Date()
+  }
+
+  const openReceipt = async (billId: string) => {
+    const { data: sess } = await supabase.auth.getSession()
+    const accessToken = sess.session?.access_token
+    const base = `/api/user/bills/${billId}/receipt`
+    const url = accessToken ? `${base}?t=${encodeURIComponent(accessToken)}` : base
+    window.open(url, "_blank")
   }
 
   if (loading) {
@@ -354,20 +361,31 @@ export default function BillsPage() {
                             </DialogContent>
                           </Dialog>
                         )}
+
                         {bill.status === "paid" && (
-                          <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
-                            <a href={`/api/user/bills/${bill.id}/receipt`} target="_blank" rel="noopener">
-                            <Download className="h-4 w-4 mr-1" />
-                            ดาวน์โหลดใบเสร็จ
-                            </a>
-                            </Button>
-                          )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
+                          <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1 bg-transparent"
+                          onClick={async () => {
+                            const { data } = await supabase.auth.getSession()
+                            const token = data.session?.access_token
+                            const url = token
+                            ? `/api/user/bills/${bill.id}/receipt?t=${encodeURIComponent(token)}`
+                            : `/api/user/bills/${bill.id}/receipt`
+                            window.open(url, "_blank")
+                            }}
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              ดาวน์โหลดใบเสร็จ
+                              </Button>
+                            )}
+                            </div>
+                          </div>
+                          </CardContent>
+                        </Card>
+                          ))
+                      ) : (
               <Card className="col-span-full">
                 <CardContent className="text-center py-12">
                   <CreditCard className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -483,7 +501,7 @@ function BillDetailView({ bill }: { bill: Bill }) {
   )
 }
 
-// Payment Slip Upload Component
+// Payment Slip Upload Component (อัปโหลด → บันทึก DB → ยืนยันชำระ → เปิดใบเสร็จ)
 function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: () => void }) {
   const [uploading, setUploading] = useState(false)
   const [notes, setNotes] = useState("")
@@ -494,29 +512,53 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
 
     try {
       setUploading(true)
+
+      // 1) อัปโหลดไฟล์ขึ้น Storage
       const fileExt = file.name.split(".").pop()
       const fileName = `${billId}-${Date.now()}.${fileExt}`
       const filePath = `payment-slips/${fileName}`
 
-      const { error: uploadError } = await supabase.storage.from("payment-slips").upload(filePath, file)
+      const { data: sess } = await supabase.auth.getSession()
+      const accessToken = sess.session?.access_token
 
+      const { error: uploadError } = await supabase.storage.from("payment-slips").upload(filePath, file)
       if (uploadError) throw uploadError
 
+      // 2) บันทึกข้อมูลสลิปลงตาราง (ใช้คอลัมน์ file_url, file_name ตามสคีมา)
       const { error: insertError } = await supabase.from("payment_slips").insert([
         {
           bill_id: billId,
-          file_path: filePath,
+          file_url: filePath,
+          file_name: file.name,
           notes,
         },
       ])
-
       if (insertError) throw insertError
 
-      toast.success("อัปโหลดสลิปเรียบร้อยแล้ว")
-      onSuccess()
-    } catch (error) {
-      console.error("Error uploading slip:", error)
-      toast.error("เกิดข้อผิดพลาดในการอัปโหลดสลิป")
+      // 3) เรียกเซิร์ฟเวอร์ให้ “ยืนยันชำระเงิน” -> เซ็ต bill = paid และคืน URL ใบเสร็จ
+      const res = await fetch(`/api/user/bills/${billId}/confirm-paid`, {
+        method: "POST",
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "ยืนยันการชำระเงินไม่สำเร็จ")
+
+      toast.success("ชำระเงินสำเร็จ! กำลังเตรียมใบเสร็จให้คุณ…")
+
+      // 4) รีเฟรชรายการบิลบนหน้าจอ
+      onSuccess?.()
+
+      // 5) เปิดดาวน์โหลดใบเสร็จ PDF ทันที
+      const receiptUrl = json?.receiptUrl || `/api/user/bills/${billId}/receipt`
+      if (accessToken) {
+        const url = `${receiptUrl}?t=${encodeURIComponent(accessToken)}`
+        window.open(url, "_blank")
+      } else {
+        window.open(receiptUrl, "_blank")
+      }
+    } catch (error: any) {
+      console.error("Error uploading/confirming:", error)
+      toast.error(error?.message || "เกิดข้อผิดพลาดในการอัปโหลด/ยืนยันการชำระเงิน")
     } finally {
       setUploading(false)
     }
@@ -532,7 +574,7 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
       />
       <Input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
       <Button disabled={uploading} className="w-full">
-        {uploading ? "กำลังอัปโหลด..." : "อัปโหลดสลิป"}
+        {uploading ? "กำลังอัปโหลด..." : "อัปโหลดสลิปและยืนยันชำระเงิน"}
       </Button>
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -8,11 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { NavAdmin } from "@/components/nav-admin"
-import { CreditCard, Eye, Search, Filter } from "lucide-react"
-import { createServerClient } from "@/lib/supabase"
+import { CreditCard, Eye, Search, Filter, Plus, Pencil, Trash2, Download } from "lucide-react"
 import { toast } from "sonner"
 
-interface BillRecord {
+type BillRecord = {
   id: string
   billing_month: string
   rent_amount: number
@@ -27,109 +26,307 @@ interface BillRecord {
   internet_amount: number
   other_charges: number
   total_amount: number
-  status: string
+  status: "paid" | "pending" | "unpaid" | string
   due_date: string
   paid_date: string | null
   created_at: string
-  contracts?: Array<{
-    profiles?: Array<{ first_name: string; last_name: string }>
-    spaces?: Array<{ name: string; code: string }>
-  }>
+  tenant_name: string
+  space_name: string
+  space_code: string
+}
+
+type MinimalContract = {
+  id: string
+  tenant_name: string
+  space_name: string
+  space_code: string
+}
+
+function formatCurrency(n: number) {
+  return new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(Number(n || 0))
+}
+function formatDate(s: string) {
+  return new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })
+}
+function formatMonth(s: string) {
+  return new Date(s).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+}
+function isOverdue(d: string, status: string) {
+  return status === "unpaid" && new Date(d) < new Date()
+}
+function StatusBadge({ status }: { status: string }) {
+  if (status === "paid") return <Badge className="bg-green-100 text-green-800">ชำระแล้ว</Badge>
+  if (status === "pending") return <Badge className="bg-yellow-100 text-yellow-800">รอตรวจสอบ</Badge>
+  if (status === "unpaid") return <Badge className="bg-red-100 text-red-800">ค้างชำระ</Badge>
+  return <Badge variant="secondary">{status}</Badge>
+}
+
+function authHeader(): HeadersInit {
+  // ❗ Dev only: อย่าใช้ใน production (ย้ายไป cookie-based admin session)
+  const devSecret = process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET
+  return devSecret ? { Authorization: `Bearer ${devSecret}` } : {}
 }
 
 export default function AdminBillsPage() {
   const [bills, setBills] = useState<BillRecord[]>([])
-  const [filtered, setFiltered] = useState<BillRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedBill, setSelectedBill] = useState<BillRecord | null>(null)
 
+  // Create dialog
+  const [openCreate, setOpenCreate] = useState(false)
+  const [contracts, setContracts] = useState<MinimalContract[]>([])
+  const [creating, setCreating] = useState(false)
+
+  const [form, setForm] = useState({
+    contractId: "",
+    month: "",          // yyyy-MM
+    rent_amount: 0,
+    water_prev: 0,
+    water_curr: 0,
+    water_rate: 0,
+    power_prev: 0,
+    power_curr: 0,
+    power_rate: 0,
+    internet_amount: 0,
+    other_charges: 0,
+    due_date: "",       // yyyy-MM-dd
+  })
+
+  // Edit dialog
+  const [openEdit, setOpenEdit] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [edit, setEdit] = useState({
+    id: "",
+    month: "", // yyyy-MM
+    rent_amount: 0,
+    water_prev: 0,
+    water_curr: 0,
+    water_rate: 0,
+    power_prev: 0,
+    power_curr: 0,
+    power_rate: 0,
+    internet_amount: 0,
+    other_charges: 0,
+    due_date: "",
+    status: "unpaid" as "paid" | "pending" | "unpaid",
+  })
+
   useEffect(() => {
     fetchBills()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    let items = bills
-    if (search) {
-      items = items.filter((b) => {
-        const contract = b.contracts?.[0]
-        const space = contract?.spaces?.[0]
-        const profile = contract?.profiles?.[0]
-        const who = `${profile?.first_name || ""} ${profile?.last_name || ""}`.toLowerCase()
-        const spaceLabel = `${space?.name || ""} ${space?.code || ""}`.toLowerCase()
-        const monthStr = new Date(b.billing_month).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
-        return who.includes(search.toLowerCase()) || spaceLabel.includes(search.toLowerCase()) || monthStr.includes(search)
-      })
-    }
-    if (statusFilter !== "all") {
-      items = items.filter((b) => b.status === statusFilter)
-    }
-    setFiltered(items)
-  }, [bills, search, statusFilter])
+    if (openCreate) fetchMinimalContracts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCreate])
 
-  const fetchBills = async () => {
+  async function fetchBills() {
     try {
-      const supabase = createServerClient()
-      const { data, error } = await supabase
-        .from("bills")
-        .select(`
-          id,
-          billing_month,
-          rent_amount,
-          water_previous_reading,
-          water_current_reading,
-          water_unit_rate,
-          water_amount,
-          power_previous_reading,
-          power_current_reading,
-          power_unit_rate,
-          power_amount,
-          internet_amount,
-          other_charges,
-          total_amount,
-          status,
-          due_date,
-          paid_date,
-          created_at,
-          contracts!bills_contract_id_fkey (
-            profiles!contracts_tenant_id_fkey (
-              first_name,
-              last_name
-            ),
-            spaces (
-              name,
-              code
-            )
-          )
-        `)
-        .order("billing_month", { ascending: false })
-
-      if (error) throw error
-      setBills(data || [])
-    } catch (e) {
-      console.error("Error fetching bills", e)
-      toast.error("ไม่สามารถดึงข้อมูลบิลได้")
+      setLoading(true)
+      const res = await fetch("/api/admin/bills", {
+        headers: { ...authHeader() },
+        cache: "no-store",
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "ไม่สามารถดึงข้อมูลบิลได้")
+      setBills(json.bills || json.data || [])
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.message || "ไม่สามารถดึงข้อมูลบิลได้")
     } finally {
       setLoading(false)
     }
   }
 
-  const formatCurrency = (n: number) => new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(n)
-  const formatDate = (s: string) => new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })
-  const formatMonth = (s: string) => new Date(s).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
-  const overdue = (d: string, status: string) => status === "unpaid" && new Date(d) < new Date()
+  async function fetchMinimalContracts() {
+    try {
+      const res = await fetch("/api/admin/contracts/minimal", {
+        headers: { ...authHeader() },
+        cache: "no-store",
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "โหลดรายชื่อสัญญาไม่สำเร็จ")
+      setContracts(json.contracts || [])
+    } catch (e: any) {
+      console.error(e)
+      toast.error(e.message || "โหลดรายชื่อสัญญาไม่สำเร็จ")
+    }
+  }
 
-  const badge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge className="bg-green-100 text-green-800">ชำระแล้ว</Badge>
-      case "pending":
-        return <Badge className="bg-yellow-100 text-yellow-800">รอตรวจสอบ</Badge>
-      case "unpaid":
-        return <Badge className="bg-red-100 text-red-800">ค้างชำระ</Badge>
-      default:
-        return <Badge variant="secondary">{status}</Badge>
+  const filtered = useMemo(() => {
+    let items = bills
+    if (search) {
+      const q = search.toLowerCase()
+      items = items.filter((b) => {
+        const who = (b.tenant_name || "").toLowerCase()
+        const spaceLabel = `${b.space_name || ""} ${b.space_code || ""}`.toLowerCase()
+        const monthStr = new Date(b.billing_month).toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+        return who.includes(q) || spaceLabel.includes(q) || monthStr.includes(search)
+      })
+    }
+    if (statusFilter !== "all") items = items.filter((b) => b.status === statusFilter)
+    return items
+  }, [bills, search, statusFilter])
+
+  // ---------- CREATE ----------
+  function computeCreate() {
+    const waterUnits = Math.max(0, Number(form.water_curr) - Number(form.water_prev))
+    const powerUnits = Math.max(0, Number(form.power_curr) - Number(form.power_prev))
+    const water_amount = waterUnits * Number(form.water_rate)
+    const power_amount = powerUnits * Number(form.power_rate)
+    const total =
+      Number(form.rent_amount) +
+      Number(form.internet_amount) +
+      Number(form.other_charges) +
+      water_amount +
+      power_amount
+    return { waterUnits, powerUnits, water_amount, power_amount, total }
+  }
+  const { waterUnits, powerUnits, water_amount, power_amount, total } = computeCreate()
+
+  async function handleCreate() {
+    try {
+      if (!form.contractId) return toast.error("กรุณาเลือกสัญญา")
+      if (!form.month) return toast.error("กรุณาเลือกเดือนบิล")
+      if (!form.due_date) return toast.error("กรุณากำหนดวันครบกำหนดชำระ")
+
+      setCreating(true)
+      const payload = {
+        contract_id: form.contractId,
+        billing_month: `${form.month}-01`,
+        rent_amount: Number(form.rent_amount || 0),
+        water_previous_reading: Number(form.water_prev || 0),
+        water_current_reading: Number(form.water_curr || 0),
+        water_unit_rate: Number(form.water_rate || 0),
+        power_previous_reading: Number(form.power_prev || 0),
+        power_current_reading: Number(form.power_curr || 0),
+        power_unit_rate: Number(form.power_rate || 0),
+        internet_amount: Number(form.internet_amount || 0),
+        other_charges: Number(form.other_charges || 0),
+        due_date: form.due_date,
+      }
+
+      const res = await fetch("/api/admin/bills", {
+        method: "POST",
+        headers: {
+          ...authHeader(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "สร้างบิลไม่สำเร็จ")
+
+      toast.success("สร้างบิลสำเร็จ")
+      setOpenCreate(false)
+      setForm({
+        contractId: "",
+        month: "",
+        rent_amount: 0,
+        water_prev: 0,
+        water_curr: 0,
+        water_rate: 0,
+        power_prev: 0,
+        power_curr: 0,
+        power_rate: 0,
+        internet_amount: 0,
+        other_charges: 0,
+        due_date: "",
+      })
+      fetchBills()
+    } catch (e: any) {
+      toast.error(e.message || "เกิดข้อผิดพลาดในการสร้างบิล")
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  // ---------- EDIT ----------
+  function openEditWith(b: BillRecord) {
+    setEdit({
+      id: b.id,
+      month: b.billing_month.slice(0, 7),
+      rent_amount: b.rent_amount,
+      water_prev: b.water_previous_reading,
+      water_curr: b.water_current_reading,
+      water_rate: b.water_unit_rate,
+      power_prev: b.power_previous_reading,
+      power_curr: b.power_current_reading,
+      power_rate: b.power_unit_rate,
+      internet_amount: b.internet_amount,
+      other_charges: b.other_charges,
+      due_date: b.due_date.slice(0, 10),
+      status: (b.status as "paid" | "pending" | "unpaid") ?? "unpaid",
+    })
+    setOpenEdit(true)
+  }
+
+  function computeEdit() {
+    const wUnits = Math.max(0, Number(edit.water_curr) - Number(edit.water_prev))
+    const pUnits = Math.max(0, Number(edit.power_curr) - Number(edit.power_prev))
+    const wAmt = wUnits * Number(edit.water_rate)
+    const pAmt = pUnits * Number(edit.power_rate)
+    const total =
+      Number(edit.rent_amount) + Number(edit.internet_amount) + Number(edit.other_charges) + wAmt + pAmt
+    return { wUnits, pUnits, wAmt, pAmt, total }
+  }
+  const { wUnits, pUnits, wAmt, pAmt, total: editTotal } = computeEdit()
+
+  async function handleEditSave() {
+    try {
+      setEditing(true)
+      const payload = {
+        billing_month: `${edit.month}-01`,
+        rent_amount: Number(edit.rent_amount),
+        water_previous_reading: Number(edit.water_prev),
+        water_current_reading: Number(edit.water_curr),
+        water_unit_rate: Number(edit.water_rate),
+        power_previous_reading: Number(edit.power_prev),
+        power_current_reading: Number(edit.power_curr),
+        power_unit_rate: Number(edit.power_rate),
+        internet_amount: Number(edit.internet_amount),
+        other_charges: Number(edit.other_charges),
+        due_date: edit.due_date,
+        status: edit.status,
+      }
+      const res = await fetch(`/api/admin/bills/${edit.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "แก้ไขบิลไม่สำเร็จ")
+
+      toast.success("บันทึกการแก้ไขเรียบร้อย")
+      setOpenEdit(false)
+      fetchBills()
+    } catch (e: any) {
+      toast.error(e.message || "เกิดข้อผิดพลาดในการแก้ไข")
+    } finally {
+      setEditing(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const ok = window.confirm("ต้องการลบบิลนี้ใช่หรือไม่?")
+    if (!ok) return
+    try {
+      const res = await fetch(`/api/admin/bills/${id}`, {
+        method: "DELETE",
+        headers: { ...authHeader() },
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "ลบบิลไม่สำเร็จ")
+      toast.success("ลบบิลเรียบร้อย")
+      setBills((prev) => prev.filter((x) => x.id !== id))
+    } catch (e: any) {
+      toast.error(e.message || "เกิดข้อผิดพลาดในการลบ")
     }
   }
 
@@ -152,11 +349,127 @@ export default function AdminBillsPage() {
       <NavAdmin />
       <div className="flex-1 p-6 bg-muted/30">
         <div className="container mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2">จัดการบิลค่าเช่า</h1>
-            <p className="text-muted-foreground">รายการบิลทั้งหมดของผู้เช่า</p>
+          {/* Header + Create */}
+          <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">จัดการบิลค่าเช่า</h1>
+              <p className="text-muted-foreground">เพิ่มบิลใหม่ ดูรายการ แก้ไข และลบบิล</p>
+            </div>
+
+            <Dialog open={openCreate} onOpenChange={setOpenCreate}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  สร้างบิลใหม่
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>สร้างบิลค่าเช่าใหม่</DialogTitle>
+                </DialogHeader>
+
+                {/* Create form */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="text-sm text-muted-foreground">สัญญา</label>
+                    <Select
+                      value={form.contractId}
+                      onValueChange={(v) => setForm((s) => ({ ...s, contractId: v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="เลือกผู้เช่า · พื้นที่" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {contracts.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.tenant_name} · {c.space_name} ({c.space_code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">เดือนบิล</label>
+                    <Input type="month" value={form.month} onChange={(e) => setForm((s) => ({ ...s, month: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">ครบกำหนดชำระ</label>
+                    <Input type="date" value={form.due_date} onChange={(e) => setForm((s) => ({ ...s, due_date: e.target.value }))} />
+                  </div>
+
+                  <div>
+                    <label className="text-sm text-muted-foreground">ค่าเช่า</label>
+                    <Input type="number" value={form.rent_amount} onChange={(e) => setForm((s) => ({ ...s, rent_amount: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">อินเทอร์เน็ต</label>
+                    <Input type="number" value={form.internet_amount} onChange={(e) => setForm((s) => ({ ...s, internet_amount: Number(e.target.value) }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm text-muted-foreground">ค่าอื่น ๆ</label>
+                    <Input type="number" value={form.other_charges} onChange={(e) => setForm((s) => ({ ...s, other_charges: Number(e.target.value) }))} />
+                  </div>
+
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-sm text-muted-foreground">น้ำ (มิเตอร์ก่อน)</label>
+                      <Input type="number" value={form.water_prev} onChange={(e) => setForm((s) => ({ ...s, water_prev: Number(e.target.value) }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground">น้ำ (มิเตอร์ปัจจุบัน)</label>
+                      <Input type="number" value={form.water_curr} onChange={(e) => setForm((s) => ({ ...s, water_curr: Number(e.target.value) }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground">น้ำ (บาท/หน่วย)</label>
+                      <Input type="number" value={form.water_rate} onChange={(e) => setForm((s) => ({ ...s, water_rate: Number(e.target.value) }))} />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full text-right text-sm">
+                        <div>หน่วย: <b>{waterUnits}</b></div>
+                        <div>เป็นเงิน: <b>{formatCurrency(water_amount)}</b></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <label className="text-sm text-muted-foreground">ไฟ (มิเตอร์ก่อน)</label>
+                      <Input type="number" value={form.power_prev} onChange={(e) => setForm((s) => ({ ...s, power_prev: Number(e.target.value) }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground">ไฟ (มิเตอร์ปัจจุบัน)</label>
+                      <Input type="number" value={form.power_curr} onChange={(e) => setForm((s) => ({ ...s, power_curr: Number(e.target.value) }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm text-muted-foreground">ไฟ (บาท/หน่วย)</label>
+                      <Input type="number" value={form.power_rate} onChange={(e) => setForm((s) => ({ ...s, power_rate: Number(e.target.value) }))} />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full text-right text-sm">
+                        <div>หน่วย: <b>{powerUnits}</b></div>
+                        <div>เป็นเงิน: <b>{formatCurrency(power_amount)}</b></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2 border-t pt-3 flex justify-between items-center text-lg font-bold">
+                    <span>ยอดรวมทั้งสิ้น:</span>
+                    <span className="text-primary">{formatCurrency(total)}</span>
+                  </div>
+
+                  <div className="md:col-span-2 flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setOpenCreate(false)}>ยกเลิก</Button>
+                    <Button onClick={handleCreate} disabled={creating}>
+                      {creating ? "กำลังบันทึก..." : "บันทึกบิล"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
+          {/* Search & Filter */}
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row gap-4">
@@ -182,90 +495,221 @@ export default function AdminBillsPage() {
                       <SelectItem value="paid">ชำระแล้ว</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Button onClick={fetchBills}>รีเฟรช</Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
+          {/* List */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {filtered.length > 0 ? (
-              filtered.map((b) => {
-                const contract = b.contracts?.[0]
-                const profile = contract?.profiles?.[0]
-                const space = contract?.spaces?.[0]
-                return (
-                  <Card
-                    key={b.id}
-                    className={`hover:shadow-lg transition-shadow ${
-                      overdue(b.due_date, b.status) ? "border-red-200 bg-red-50/50" : ""
-                    }`}
-                  >
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
+              filtered.map((b) => (
+                <Card
+                  key={b.id}
+                  className={`hover:shadow-lg transition-shadow ${isOverdue(b.due_date, b.status) ? "border-red-200 bg-red-50/50" : ""}`}
+                >
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-xl">บิล {formatMonth(b.billing_month)}</CardTitle>
+                        <CardDescription className="mt-1">
+                          {b.tenant_name || "ผู้เช่าไม่ทราบ"} · {b.space_name} ({b.space_code})
+                        </CardDescription>
+                      </div>
+                      <div className="text-right">
+                        <StatusBadge status={b.status} />
+                        {isOverdue(b.due_date, b.status) && (
+                          <Badge variant="destructive" className="mt-1 block">เกินกำหนด</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <CardTitle className="text-xl">บิล {formatMonth(b.billing_month)}</CardTitle>
-                          <CardDescription className="mt-1">
-                            {profile ? `${profile.first_name} ${profile.last_name}` : "ผู้เช่าไม่ทราบ"} · {space?.name} ({space?.code})
-                          </CardDescription>
+                          <span className="text-muted-foreground">ค่าเช่า:</span>
+                          <p className="font-medium">{formatCurrency(b.rent_amount)}</p>
                         </div>
-                        <div className="text-right">
-                          {badge(b.status)}
-                          {overdue(b.due_date, b.status) && (
-                            <Badge variant="destructive" className="mt-1 block">เกินกำหนด</Badge>
-                          )}
+                        <div>
+                          <span className="text-muted-foreground">รวมชำระ:</span>
+                          <p className="font-bold">{formatCurrency(b.total_amount)}</p>
                         </div>
+                        <div>
+                          <span className="text-muted-foreground">กำหนดชำระ:</span>
+                          <p className={isOverdue(b.due_date, b.status) ? "text-red-600 font-medium" : ""}>
+                            {formatDate(b.due_date)}
+                          </p>
+                        </div>
+                        {b.paid_date && (
+                          <div>
+                            <span className="text-muted-foreground">วันที่ชำระ:</span>
+                            <p>{formatDate(b.paid_date)}</p>
+                          </div>
+                        )}
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">ค่าเช่า:</span>
-                            <p className="font-medium">{formatCurrency(b.rent_amount)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">รวมชำระ:</span>
-                            <p className="font-bold">{formatCurrency(b.total_amount)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">กำหนดชำระ:</span>
-                            <p className={overdue(b.due_date, b.status) ? "text-red-600 font-medium" : ""}>{formatDate(b.due_date)}</p>
-                          </div>
-                          {b.paid_date && (
-                            <div>
-                              <span className="text-muted-foreground">วันที่ชำระ:</span>
-                              <p>{formatDate(b.paid_date)}</p>
-                            </div>
-                          )}
-                        </div>
 
-                        <div className="flex gap-2 pt-4">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button size="sm" variant="outline" className="flex-1 bg-transparent" onClick={() => setSelectedBill(b)}>
-                                <Eye className="h-4 w-4 mr-1" />
-                                ดูรายละเอียด
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>รายละเอียดบิล</DialogTitle>
-                              </DialogHeader>
-                              {selectedBill && <BillDetail bill={selectedBill} />}
-                            </DialogContent>
-                          </Dialog>
-                        </div>
+                      <div className="flex gap-2 pt-4">
+                        {/* View */}
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1 bg-transparent"
+                              onClick={() => setSelectedBill(b)}
+                            >
+                              <Eye className="h-4 w-4 mr-1" />
+                              ดูรายละเอียด
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>รายละเอียดบิล</DialogTitle>
+                            </DialogHeader>
+                            {selectedBill && <BillDetail bill={selectedBill} />}
+                          </DialogContent>
+                        </Dialog>
+
+                        {/* Edit */}
+                        <Dialog open={openEdit} onOpenChange={setOpenEdit}>
+                          <DialogTrigger asChild>
+                            <Button size="sm" className="flex-1" variant="secondary" onClick={() => openEditWith(b)}>
+                              <Pencil className="h-4 w-4 mr-1" />
+                              แก้ไข
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-2xl">
+                            <DialogHeader>
+                              <DialogTitle>แก้ไขบิล</DialogTitle>
+                            </DialogHeader>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="text-sm text-muted-foreground">เดือนบิล</label>
+                                <Input type="month" value={edit.month} onChange={(e) => setEdit((s) => ({ ...s, month: e.target.value }))} />
+                              </div>
+                              <div>
+                                <label className="text-sm text-muted-foreground">ครบกำหนด</label>
+                                <Input type="date" value={edit.due_date} onChange={(e) => setEdit((s) => ({ ...s, due_date: e.target.value }))} />
+                              </div>
+
+                              <div>
+                                <label className="text-sm text-muted-foreground">สถานะ</label>
+                                <Select value={edit.status} onValueChange={(v: any) => setEdit((s) => ({ ...s, status: v }))}>
+                                  <SelectTrigger><SelectValue placeholder="สถานะ" /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="unpaid">ค้างชำระ</SelectItem>
+                                    <SelectItem value="pending">รอตรวจสอบ</SelectItem>
+                                    <SelectItem value="paid">ชำระแล้ว</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div />
+
+                              <div>
+                                <label className="text-sm text-muted-foreground">ค่าเช่า</label>
+                                <Input type="number" value={edit.rent_amount} onChange={(e) => setEdit((s) => ({ ...s, rent_amount: Number(e.target.value) }))} />
+                              </div>
+                              <div>
+                                <label className="text-sm text-muted-foreground">อินเทอร์เน็ต</label>
+                                <Input type="number" value={edit.internet_amount} onChange={(e) => setEdit((s) => ({ ...s, internet_amount: Number(e.target.value) }))} />
+                              </div>
+                              <div>
+                                <label className="text-sm text-muted-foreground">ค่าอื่น ๆ</label>
+                                <Input type="number" value={edit.other_charges} onChange={(e) => setEdit((s) => ({ ...s, other_charges: Number(e.target.value) }))} />
+                              </div>
+
+                              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div>
+                                  <label className="text-sm text-muted-foreground">น้ำ (ก่อน)</label>
+                                  <Input type="number" value={edit.water_prev} onChange={(e) => setEdit((s) => ({ ...s, water_prev: Number(e.target.value) }))} />
+                                </div>
+                                <div>
+                                  <label className="text-sm text-muted-foreground">น้ำ (ปัจจุบัน)</label>
+                                  <Input type="number" value={edit.water_curr} onChange={(e) => setEdit((s) => ({ ...s, water_curr: Number(e.target.value) }))} />
+                                </div>
+                                <div>
+                                  <label className="text-sm text-muted-foreground">น้ำ (บาท/หน่วย)</label>
+                                  <Input type="number" value={edit.water_rate} onChange={(e) => setEdit((s) => ({ ...s, water_rate: Number(e.target.value) }))} />
+                                </div>
+                                <div className="flex items-end">
+                                  <div className="w-full text-right text-sm">
+                                    <div>หน่วย: <b>{wUnits}</b></div>
+                                    <div>เป็นเงิน: <b>{formatCurrency(wAmt)}</b></div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div>
+                                  <label className="text-sm text-muted-foreground">ไฟ (ก่อน)</label>
+                                  <Input type="number" value={edit.power_prev} onChange={(e) => setEdit((s) => ({ ...s, power_prev: Number(e.target.value) }))} />
+                                </div>
+                                <div>
+                                  <label className="text-sm text-muted-foreground">ไฟ (ปัจจุบัน)</label>
+                                  <Input type="number" value={edit.power_curr} onChange={(e) => setEdit((s) => ({ ...s, power_curr: Number(e.target.value) }))} />
+                                </div>
+                                <div>
+                                  <label className="text-sm text-muted-foreground">ไฟ (บาท/หน่วย)</label>
+                                  <Input type="number" value={edit.power_rate} onChange={(e) => setEdit((s) => ({ ...s, power_rate: Number(e.target.value) }))} />
+                                </div>
+                                <div className="flex items-end">
+                                  <div className="w-full text-right text-sm">
+                                    <div>หน่วย: <b>{pUnits}</b></div>
+                                    <div>เป็นเงิน: <b>{formatCurrency(pAmt)}</b></div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="md:col-span-2 border-t pt-3 flex justify-between items-center text-lg font-bold">
+                                <span>ยอดรวมทั้งสิ้น (คำนวณใหม่):</span>
+                                <span className="text-primary">{formatCurrency(editTotal)}</span>
+                              </div>
+
+                              <div className="md:col-span-2 flex justify-end gap-2">
+                                <Button variant="outline" onClick={() => setOpenEdit(false)}>ยกเลิก</Button>
+                                <Button onClick={handleEditSave} disabled={editing}>
+                                  {editing ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                                </Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+
+                        {/* Delete */}
+                        <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(b.id)}>
+                          <Trash2 className="h-4 w-4 mr-1" />
+                          ลบ
+                        </Button>
+
+                        {/* Receipt (admin) */}
+                        {b.status === "paid" && (
+                          <Button asChild size="sm" variant="outline" className="flex-1 bg-transparent">
+                            <a
+                              href={`/api/admin/bills/${b.id}/receipt`}
+                              target="_blank"
+                              rel="noopener"
+                            >
+                              <Download className="h-4 w-4 mr-1" />
+                              ใบเสร็จ
+                            </a>
+                          </Button>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                )
-              })
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
             ) : (
               <Card className="col-span-full">
                 <CardContent className="text-center py-12">
                   <CreditCard className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">ไม่พบบิล</h3>
-                  <p className="text-muted-foreground">{search || statusFilter !== "all" ? "ลองปรับตัวกรองหรือคำค้นหา" : "ยังไม่มีข้อมูลบิลในระบบ"}</p>
+                  <p className="text-muted-foreground">
+                    {search || statusFilter !== "all" ? "ลองปรับตัวกรองหรือคำค้นหา" : "ยังไม่มีข้อมูลบิลในระบบ"}
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -277,8 +721,6 @@ export default function AdminBillsPage() {
 }
 
 function BillDetail({ bill }: { bill: BillRecord }) {
-  const formatCurrency = (n: number) => new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(n)
-  const formatDate = (s: string) => new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })
   const usage = (curr: number, prev: number) => curr - prev
 
   return (
@@ -289,11 +731,15 @@ function BillDetail({ bill }: { bill: BillRecord }) {
           <p className="font-medium text-right">{formatCurrency(bill.rent_amount)}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">ค่าน้ำ ({usage(bill.water_current_reading, bill.water_previous_reading)} หน่วย):</span>
+          <span className="text-muted-foreground">
+            ค่าน้ำ ({usage(bill.water_current_reading, bill.water_previous_reading)} หน่วย):
+          </span>
           <p className="font-medium text-right">{formatCurrency(bill.water_amount)}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">ค่าไฟ ({usage(bill.power_current_reading, bill.power_previous_reading)} หน่วย):</span>
+          <span className="text-muted-foreground">
+            ค่าไฟ ({usage(bill.power_current_reading, bill.power_previous_reading)} หน่วย):
+          </span>
           <p className="font-medium text-right">{formatCurrency(bill.power_amount)}</p>
         </div>
         <div>
@@ -328,4 +774,3 @@ function BillDetail({ bill }: { bill: BillRecord }) {
     </div>
   )
 }
-

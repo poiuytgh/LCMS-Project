@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,16 +20,17 @@ import { CreditCard, Upload, Download, Eye, Search, Filter } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth-provider"
 import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 interface Bill {
   id: string
   contract: {
     id: string
-    space: {
-      name: string
-      code: string
+    space?: {
+      name?: string
+      code?: string
     }
-  }
+  } | null
   billing_month: string
   rent_amount: number
   water_previous_reading: number
@@ -43,7 +44,7 @@ interface Bill {
   internet_amount: number
   other_charges: number
   total_amount: number
-  status: string
+  status: "paid" | "pending" | "unpaid" | string
   due_date: string
   paid_date: string | null
   created_at: string
@@ -57,12 +58,14 @@ export default function BillsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null)
+  // ควบคุม dialog อัปโหลด (เก็บ billId ที่กำลังเปิด)
+  const [openUpload, setOpenUpload] = useState<string | null>(null)
 
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       fetchBills()
     }
-  }, [user])
+  }, [user?.id])
 
   useEffect(() => {
     filterBills()
@@ -70,6 +73,7 @@ export default function BillsPage() {
 
   const fetchBills = async () => {
     try {
+      setLoading(true)
       const { data, error } = await supabase
         .from("bills")
         .select(
@@ -100,26 +104,28 @@ export default function BillsPage() {
               code
             )
           )
-        `,
+        `
         )
-        .eq("contract.tenant_id", user?.id)
+        // กรองตามผู้เช่า
+        .eq("contract.tenant_id", user!.id)
         .order("billing_month", { ascending: false })
 
       if (error) throw error
 
-      setBills(
-        (data || []).map((bill: any) => ({
-          ...bill,
-          contract: bill.contract?.[0]
-            ? {
-                id: bill.contract[0].id,
-                space: bill.contract[0].space?.[0] || { name: "", code: "" },
-              }
-            : { id: "", space: { name: "", code: "" } },
-        })),
-      )
-    } catch (error) {
-      console.error("Error fetching bills:", error)
+      // ทำให้โครงสร้างสม่ำเสมอ รองรับกรณี lib คืน array/object
+      const normalized: Bill[] = (data || []).map((b: any) => {
+        const contractRaw = Array.isArray(b.contract) ? b.contract[0] : b.contract
+        const spaceRaw = contractRaw?.space
+        const space = Array.isArray(spaceRaw) ? spaceRaw[0] : spaceRaw
+        return {
+          ...b,
+          contract: contractRaw ? { id: contractRaw.id, space } : null,
+        }
+      })
+
+      setBills(normalized)
+    } catch (err) {
+      console.error("Error fetching bills:", err)
       toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูลบิล")
     } finally {
       setLoading(false)
@@ -129,15 +135,16 @@ export default function BillsPage() {
   const filterBills = () => {
     let filtered = bills
 
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (bill) =>
-          bill.contract?.space?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          bill.contract?.space?.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          new Date(bill.billing_month)
-            .toLocaleDateString("th-TH", { month: "long", year: "numeric" })
-            .includes(searchTerm),
-      )
+    if (searchTerm.trim()) {
+      const s = searchTerm.toLowerCase()
+      filtered = filtered.filter((bill) => {
+        const spaceName = bill.contract?.space?.name?.toLowerCase() ?? ""
+        const spaceCode = bill.contract?.space?.code?.toLowerCase() ?? ""
+        const monthStr = new Date(bill.billing_month)
+          .toLocaleDateString("th-TH", { month: "long", year: "numeric" })
+          .toLowerCase()
+        return spaceName.includes(s) || spaceCode.includes(s) || monthStr.includes(s)
+      })
     }
 
     if (statusFilter !== "all") {
@@ -160,31 +167,26 @@ export default function BillsPage() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("th-TH", {
+  const formatDate = (dateString: string) =>
+    new Date(dateString).toLocaleDateString("th-TH", {
       year: "numeric",
       month: "long",
       day: "numeric",
     })
-  }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH", {
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("th-TH", {
       style: "currency",
       currency: "THB",
     }).format(amount)
-  }
 
-  const formatMonth = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("th-TH", {
+  const formatMonth = (dateString: string) =>
+    new Date(dateString).toLocaleDateString("th-TH", {
       month: "long",
       year: "numeric",
     })
-  }
 
-  const isOverdue = (dueDate: string, status: string) => {
-    return status === "unpaid" && new Date(dueDate) < new Date()
-  }
+  const isOverdue = (dueDate: string, status: string) => status === "unpaid" && new Date(dueDate) < new Date()
 
   const openReceipt = async (billId: string) => {
     const { data: sess } = await supabase.auth.getSession()
@@ -219,12 +221,12 @@ export default function BillsPage() {
             <p className="text-muted-foreground">ตรวจสอบและจัดการบิลค่าเช่ารายเดือน</p>
           </div>
 
-          {/* Search and Filter */}
+          {/* Search & Filter */}
           <Card className="mb-6">
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
                   <Input
                     placeholder="ค้นหาตามชื่อพื้นที่ รหัสพื้นที่ หรือเดือน..."
                     value={searchTerm}
@@ -319,6 +321,7 @@ export default function BillsPage() {
                       </div>
 
                       <div className="flex gap-2 pt-4">
+                        {/* View detail */}
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
@@ -342,8 +345,9 @@ export default function BillsPage() {
                           </DialogContent>
                         </Dialog>
 
+                        {/* Upload slip (controlled) */}
                         {bill.status === "unpaid" && (
-                          <Dialog>
+                          <Dialog open={openUpload === bill.id} onOpenChange={(o) => setOpenUpload(o ? bill.id : null)}>
                             <DialogTrigger asChild>
                               <Button size="sm" className="flex-1">
                                 <Upload className="h-4 w-4 mr-1" />
@@ -354,44 +358,44 @@ export default function BillsPage() {
                               <DialogHeader>
                                 <DialogTitle>อัปโหลดสลิปการชำระเงิน</DialogTitle>
                                 <DialogDescription>
-                                  อัปโหลดสลิปการชำระเงินสำหรับบิลเดือน {formatMonth(bill.billing_month)}
+                                  อัปโหลดสลิปสำหรับบิลเดือน {formatMonth(bill.billing_month)}
                                 </DialogDescription>
                               </DialogHeader>
-                              <PaymentSlipUpload billId={bill.id} onSuccess={fetchBills} />
+                              <PaymentSlipUpload
+                                billId={bill.id}
+                                onSuccess={fetchBills}
+                                onDone={() => setOpenUpload(null)}
+                              />
                             </DialogContent>
                           </Dialog>
                         )}
 
+                        {/* Download receipt after paid */}
                         {bill.status === "paid" && (
                           <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1 bg-transparent"
-                          onClick={async () => {
-                            const { data } = await supabase.auth.getSession()
-                            const token = data.session?.access_token
-                            const url = token
-                            ? `/api/user/bills/${bill.id}/receipt?t=${encodeURIComponent(token)}`
-                            : `/api/user/bills/${bill.id}/receipt`
-                            window.open(url, "_blank")
-                            }}
-                            >
-                              <Download className="h-4 w-4 mr-1" />
-                              ดาวน์โหลดใบเสร็จ
-                              </Button>
-                            )}
-                            </div>
-                          </div>
-                          </CardContent>
-                        </Card>
-                          ))
-                      ) : (
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 bg-transparent"
+                            onClick={() => openReceipt(bill.id)}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            ดาวน์โหลดใบเสร็จ
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
               <Card className="col-span-full">
                 <CardContent className="text-center py-12">
                   <CreditCard className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">ไม่พบบิลค่าเช่า</h3>
                   <p className="text-muted-foreground">
-                    {searchTerm || statusFilter !== "all" ? "ไม่พบบิลที่ตรงกับเงื่อนไขการค้นหา" : "คุณยังไม่มีบิลค่าเช่าในระบบ"}
+                    {searchTerm || statusFilter !== "all"
+                      ? "ไม่พบบิลที่ตรงกับเงื่อนไขการค้นหา"
+                      : "คุณยังไม่มีบิลค่าเช่าในระบบ"}
                   </p>
                 </CardContent>
               </Card>
@@ -403,26 +407,15 @@ export default function BillsPage() {
   )
 }
 
-// Bill Detail Component
+/* ---------- Bill detail ---------- */
 function BillDetailView({ bill }: { bill: Bill }) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH", {
-      style: "currency",
-      currency: "THB",
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("th-TH", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    })
-  }
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(amount)
+  const formatDate = (s: string) =>
+    new Date(s).toLocaleDateString("th-TH", { year: "numeric", month: "long", day: "numeric" })
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="bg-primary text-primary-foreground p-4 rounded-lg text-center">
         <h3 className="text-lg font-semibold">บิลค่าเช่า</h3>
         <p className="text-sm opacity-90">
@@ -430,7 +423,6 @@ function BillDetailView({ bill }: { bill: Bill }) {
         </p>
       </div>
 
-      {/* Bill Details */}
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -501,41 +493,44 @@ function BillDetailView({ bill }: { bill: Bill }) {
   )
 }
 
-// Payment Slip Upload Component (อัปโหลด → บันทึก DB → ยืนยันชำระ → เปิดใบเสร็จ)
-function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: () => void }) {
+/* ---------- Upload & confirm ---------- */
+function PaymentSlipUpload({
+  billId,
+  onSuccess,
+  onDone,
+}: {
+  billId: string
+  onSuccess: () => void
+  onDone?: () => void
+}) {
   const [uploading, setUploading] = useState(false)
   const [notes, setNotes] = useState("")
+  const fileRef = useRef<HTMLInputElement | null>(null)
+  const router = useRouter()
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
+  // ✅ อัปเดตตามคำแนะนำ: ไม่ใส่ชื่อ bucket ใน path (owner policy)
+  //    ใช้ path สั้น ๆ เช่น `${billId}-${Date.now()}.${ext}`
+  const doUpload = async (file: File) => {
     try {
       setUploading(true)
 
-      // 1) อัปโหลดไฟล์ขึ้น Storage
-      const fileExt = file.name.split(".").pop()
-      const fileName = `${billId}-${Date.now()}.${fileExt}`
-      const filePath = `payment-slips/${fileName}`
+      const fileExt = file.name.split(".").pop() || "jpg"
+      const filePath = `${billId}-${Date.now()}.${fileExt}` // ❗ ไม่มี "payment-slips/" นำหน้า
 
-      const { data: sess } = await supabase.auth.getSession()
-      const accessToken = sess.session?.access_token
-
-      const { error: uploadError } = await supabase.storage.from("payment-slips").upload(filePath, file)
+      const { error: uploadError } = await supabase.storage
+        .from("payment-slips")
+        .upload(filePath, file)
       if (uploadError) throw uploadError
 
-      // 2) บันทึกข้อมูลสลิปลงตาราง (ใช้คอลัมน์ file_url, file_name ตามสคีมา)
+      // บันทึกลงตาราง (เก็บ path แบบสั้น)
       const { error: insertError } = await supabase.from("payment_slips").insert([
-        {
-          bill_id: billId,
-          file_url: filePath,
-          file_name: file.name,
-          notes,
-        },
+        { bill_id: billId, file_url: filePath, file_name: file.name, notes },
       ])
       if (insertError) throw insertError
 
-      // 3) เรียกเซิร์ฟเวอร์ให้ “ยืนยันชำระเงิน” -> เซ็ต bill = paid และคืน URL ใบเสร็จ
+      // เรียก server ให้ confirm paid
+      const { data: sess } = await supabase.auth.getSession()
+      const accessToken = sess.session?.access_token
       const res = await fetch(`/api/user/bills/${billId}/confirm-paid`, {
         method: "POST",
         headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
@@ -543,25 +538,30 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || "ยืนยันการชำระเงินไม่สำเร็จ")
 
-      toast.success("ชำระเงินสำเร็จ! กำลังเตรียมใบเสร็จให้คุณ…")
+      toast.success("ชำระเงินสำเร็จ! กำลังเปิดใบเสร็จ…")
 
-      // 4) รีเฟรชรายการบิลบนหน้าจอ
       onSuccess?.()
 
-      // 5) เปิดดาวน์โหลดใบเสร็จ PDF ทันที
+      // เปิดใบเสร็จ
       const receiptUrl = json?.receiptUrl || `/api/user/bills/${billId}/receipt`
-      if (accessToken) {
-        const url = `${receiptUrl}?t=${encodeURIComponent(accessToken)}`
-        window.open(url, "_blank")
-      } else {
-        window.open(receiptUrl, "_blank")
-      }
+      const url = accessToken ? `${receiptUrl}?t=${encodeURIComponent(accessToken)}` : receiptUrl
+      window.open(url, "_blank")
+
+      // ปิด dialog และ refresh
+      onDone?.()
+      router.push("/dashboard/bills")
+      router.refresh()
     } catch (error: any) {
       console.error("Error uploading/confirming:", error)
       toast.error(error?.message || "เกิดข้อผิดพลาดในการอัปโหลด/ยืนยันการชำระเงิน")
     } finally {
       setUploading(false)
     }
+  }
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) await doUpload(file)
   }
 
   return (
@@ -572,9 +572,22 @@ function PaymentSlipUpload({ billId, onSuccess }: { billId: string; onSuccess: (
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
       />
-      <Input type="file" accept="image/*" onChange={handleFileUpload} disabled={uploading} />
-      <Button disabled={uploading} className="w-full">
-        {uploading ? "กำลังอัปโหลด..." : "อัปโหลดสลิปและยืนยันชำระเงิน"}
+
+      {/* ซ่อน input แล้วกดปุ่มเพื่อเปิด file picker */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={onPickFile}
+        className="hidden"
+      />
+
+      <Button
+        disabled={uploading}
+        className="w-full"
+        onClick={() => fileRef.current?.click()}
+      >
+        {uploading ? "กำลังอัปโหลด..." : "เลือกไฟล์สลิปและอัปโหลด"}
       </Button>
     </div>
   )

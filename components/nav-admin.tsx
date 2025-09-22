@@ -38,6 +38,7 @@ export function NavAdmin() {
     { href: "/admin/contracts", label: "สัญญาเช่า" },
     { href: "/admin/spaces", label: "พื้นที่" },
     { href: "/admin/bills", label: "บิลค่าเช่า" },
+    { href: "/admin/payment-slips", label: "สลิปชำระเงิน" },
     { href: "/admin/support", label: "ปัญหาการใช้งาน" },
     { href: "/admin/reports", label: "รายงาน/สถิติ" },
     { href: "/admin/profile", label: "โปรไฟล์" },

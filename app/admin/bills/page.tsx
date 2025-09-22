@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { NavAdmin } from "@/components/nav-admin"
-import { CreditCard, Eye, Search, Filter, Plus, Pencil, Trash2, Download } from "lucide-react"
+import { CreditCard, Eye, Search, Filter, Plus, Pencil, Trash2, Download, Check, X } from "lucide-react"
 import { toast } from "sonner"
 
 type BillRecord = {
@@ -62,7 +62,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function authHeader(): HeadersInit {
-  // ❗ Dev only: อย่าใช้ใน production (ย้ายไป cookie-based admin session)
+  // ❗ Dev only: อย่าใช้ใน production (ควรย้ายไป session/cookie สำหรับแอดมิน)
   const devSecret = process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET
   return devSecret ? { Authorization: `Bearer ${devSecret}` } : {}
 }
@@ -313,6 +313,7 @@ export default function AdminBillsPage() {
     }
   }
 
+  // ---------- DELETE ----------
   async function handleDelete(id: string) {
     const ok = window.confirm("ต้องการลบบิลนี้ใช่หรือไม่?")
     if (!ok) return
@@ -327,6 +328,48 @@ export default function AdminBillsPage() {
       setBills((prev) => prev.filter((x) => x.id !== id))
     } catch (e: any) {
       toast.error(e.message || "เกิดข้อผิดพลาดในการลบ")
+    }
+  }
+
+  // ---------- VERIFY (Approve / Reject) ----------
+  async function approveBill(id: string) {
+    try {
+      const ok = window.confirm("ยืนยันการชำระบิลนี้ใช่หรือไม่?")
+      if (!ok) return
+      const res = await fetch(`/api/admin/bills/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: JSON.stringify({ decision: "approve" }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "อนุมัติไม่สำเร็จ")
+      toast.success("ยืนยันชำระเรียบร้อย • ได้แจ้งผู้เช่าแล้ว")
+      fetchBills()
+    } catch (e: any) {
+      toast.error(e.message || "เกิดข้อผิดพลาดในการยืนยันชำระ")
+    }
+  }
+
+  async function rejectBill(id: string) {
+    try {
+      const reason = window.prompt("เหตุผลในการปฏิเสธ (optional):", "") || undefined
+      const res = await fetch(`/api/admin/bills/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: JSON.stringify({ decision: "reject", reason }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error || "ปฏิเสธไม่สำเร็จ")
+      toast.success("ปฏิเสธการชำระเรียบร้อย • ได้แจ้งผู้เช่าแล้ว")
+      fetchBills()
+    } catch (e: any) {
+      toast.error(e.message || "เกิดข้อผิดพลาดในการปฏิเสธ")
     }
   }
 
@@ -353,7 +396,7 @@ export default function AdminBillsPage() {
           <div className="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2">จัดการบิลค่าเช่า</h1>
-              <p className="text-muted-foreground">เพิ่มบิลใหม่ ดูรายการ แก้ไข และลบบิล</p>
+              <p className="text-muted-foreground">เพิ่มบิลใหม่ ดูรายการ แก้ไข ลบ และตรวจสอบการชำระเงิน</p>
             </div>
 
             <Dialog open={openCreate} onOpenChange={setOpenCreate}>
@@ -550,7 +593,7 @@ export default function AdminBillsPage() {
                         )}
                       </div>
 
-                      <div className="flex gap-2 pt-4">
+                      <div className="flex flex-wrap gap-2 pt-4">
                         {/* View */}
                         <Dialog>
                           <DialogTrigger asChild>
@@ -682,6 +725,26 @@ export default function AdminBillsPage() {
                         <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(b.id)}>
                           <Trash2 className="h-4 w-4 mr-1" />
                           ลบ
+                        </Button>
+
+                        {/* Approve / Reject */}
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => approveBill(b.id)}
+                          variant="default"
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          ยืนยันชำระ
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          variant="outline"
+                          onClick={() => rejectBill(b.id)}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          ปฏิเสธ
                         </Button>
 
                         {/* Receipt (admin) */}

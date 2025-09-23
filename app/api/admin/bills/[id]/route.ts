@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
 
-
 function requireAdminAuth(req: Request): string | null {
-  const need = `Bearer ${process.env.ADMIN_SEED_SECRET}`;
+  const need = `Bearer ${process.env.ADMIN_SEED_SECRET ?? process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET}`;
   const got = req.headers.get("authorization");
   return got === need ? null : "Unauthorized";
 }
@@ -109,9 +108,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const supabase = createServerClient();
 
     const { data: oldBill } = await supabase.from("bills").select("*").eq("id", params.id).single();
-    if (
-      ["rent_amount", "water_amount", "power_amount", "internet_amount", "other_charges"].some((k) => k in allowed)
-    ) {
+    if (["rent_amount", "water_amount", "power_amount", "internet_amount", "other_charges"].some((k) => k in allowed)) {
       const current = { ...(oldBill || {}), ...allowed };
       const total =
         Number(current.rent_amount || 0) +
@@ -182,16 +179,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       .limit(1)
       .maybeSingle();
 
-    if (slipErr) {
-      console.error("Fetch slip error:", slipErr);
-    }
+    if (slipErr) console.error("Fetch slip error:", slipErr);
 
     if (decision === "approve") {
       const { error: upBillErr } = await supabase
         .from("bills")
         .update({ status: "paid", paid_date: new Date().toISOString() })
         .eq("id", billId);
-
       if (upBillErr) return NextResponse.json({ error: upBillErr.message }, { status: 400 });
 
       if (slip?.id) {
@@ -222,7 +216,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       .from("bills")
       .update({ status: "unpaid", paid_date: null })
       .eq("id", billId);
-
     if (upBillErr) return NextResponse.json({ error: upBillErr.message }, { status: 400 });
 
     if (slip?.id) {
@@ -265,6 +258,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const supabase = createServerClient();
     const { error } = await supabase.from("bills").delete().eq("id", params.id);
     if (error) throw error;
+
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });

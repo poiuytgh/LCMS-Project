@@ -3,10 +3,11 @@ import { createServerClient } from "@/lib/supabase"
 
 // DEV guard ด้วย SECRET (อย่าใช้ในโปรดักชัน)
 function requireAdminAuth(req: Request): string | null {
-  const need = `Bearer ${process.env.ADMIN_SEED_SECRET}`
-  const got = req.headers.get("authorization")
-  return got === need ? null : "Unauthorized"
+  const got = req.headers.get("authorization");
+  const need = `Bearer ${process.env.ADMIN_SEED_SECRET ?? process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET}`;
+  return got === need ? null : "Unauthorized";
 }
+
 
 export async function GET(req: Request) {
   try {
@@ -18,14 +19,9 @@ export async function GET(req: Request) {
     // เลือกเฉพาะสัญญาที่เกี่ยวกับการออกบิล (active + expiring)
     const { data, error } = await supabase
       .from("contracts")
-      .select(`
-        id,
-        status,
-        profiles!contracts_tenant_id_fkey ( first_name, last_name ),
-        spaces ( name, code )
-      `)
-      .in("status", ["active", "expiring"]) // ถ้าอยากให้ทุกสถานะ ก็เอาบรรทัดนี้ออกได้
-      .order("created_at", { ascending: false })
+      .select(`id, profiles!contracts_tenant_id_fkey ( first_name,last_name ), spaces ( name, code )`)
+      .order("created_at", { ascending: false });
+
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 

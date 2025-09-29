@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { NavAdmin } from "@/components/nav-admin";
 import { CreditCard, Eye, Search, Filter, Plus, Pencil, Trash2, Download, Check, X } from "lucide-react";
 import { toast } from "sonner";
+import { DialogDescription } from "@radix-ui/react-dialog";
 
 type BillRecord = {
   id: string;
@@ -404,6 +405,7 @@ export default function AdminBillsPage() {
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
                   <DialogTitle>สร้างบิลค่าเช่าใหม่</DialogTitle>
+                  <DialogDescription>กรอกข้อมูลเพื่อสร้างบิลใหม่</DialogDescription>
                 </DialogHeader>
 
                 {/* Create form */}
@@ -676,6 +678,7 @@ export default function AdminBillsPage() {
                           <DialogContent className="max-w-2xl">
                             <DialogHeader>
                               <DialogTitle>แก้ไขบิล</DialogTitle>
+                              <DialogDescription>อัปเดตตัวเลข/สถานะของบิลนี้</DialogDescription>
                             </DialogHeader>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

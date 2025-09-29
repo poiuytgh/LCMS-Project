@@ -16,13 +16,22 @@ export default function ForgotPasswordPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sending) return;
+
+    const value = email.trim();
+    if (!value) {
+      toast.error("กรุณากรอกอีเมล");
+      return;
+    }
+
     setSending(true);
     try {
       const origin = window.location.origin;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(value, {
         redirectTo: `${origin}/update-password`,
       });
       if (error) throw error;
+
       toast.success("ถ้าอีเมลนี้อยู่ในระบบ เราได้ส่งลิงก์รีเซ็ตรหัสผ่านให้แล้ว");
     } catch (err) {
       console.error(err);
@@ -50,6 +59,7 @@ export default function ForgotPasswordPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
             <Button type="submit" className="w-full" disabled={sending}>

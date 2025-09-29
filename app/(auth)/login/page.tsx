@@ -32,7 +32,7 @@ export default function LoginPage() {
       }
       if (data.user) {
         toast.success("เข้าสู่ระบบสำเร็จ");
-        router.replace("/dashboard");
+        router.replace("/user/dashboard");
       }
     } catch {
       toast.error("เกิดข้อผิดพลาดในการเข้าสู่ระบบ");

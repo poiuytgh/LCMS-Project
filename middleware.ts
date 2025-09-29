@@ -6,37 +6,42 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const supabase = createMiddlewareClient({ req, res })
 
-  // Refresh session if expired - required for Server Components
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // Admin routes protection
-  if (req.nextUrl.pathname.startsWith("/admin")) {
+  const { pathname } = req.nextUrl
+
+  if (pathname.startsWith("/admin")) {
     const adminSession = req.cookies.get("admin_session")?.value
-
     if (!adminSession || adminSession !== "true") {
-      return NextResponse.redirect(new URL("/login/admin", req.url))
+      const url = req.nextUrl.clone()
+      url.pathname = "/login/admin"
+      return NextResponse.redirect(url)
     }
   }
 
-  // User dashboard protection
-  if (req.nextUrl.pathname.startsWith("/dashboard")) {
+  if (pathname.startsWith("/user")) {
     if (!session) {
-      return NextResponse.redirect(new URL("/login", req.url))
+      const url = req.nextUrl.clone()
+      url.pathname = "/login"
+      return NextResponse.redirect(url)
     }
   }
 
-  // Redirect authenticated users away from auth pages
-  if (session && (req.nextUrl.pathname === "/login" || req.nextUrl.pathname === "/register")) {
-    return NextResponse.redirect(new URL("/dashboard", req.url))
+  const isAuthPage = pathname === "/login" || pathname === "/register"
+  if (session && isAuthPage) {
+    const url = req.nextUrl.clone()
+    url.pathname = "/user/dashboard"
+    return NextResponse.redirect(url)
   }
 
-  // Redirect authenticated admin away from admin login page
-  if (req.nextUrl.pathname === "/login/admin") {
+  if (pathname === "/login/admin") {
     const adminSession = req.cookies.get("admin_session")?.value
     if (adminSession === "true") {
-      return NextResponse.redirect(new URL("/admin", req.url))
+      const url = req.nextUrl.clone()
+      url.pathname = "/admin"
+      return NextResponse.redirect(url)
     }
   }
 
@@ -44,5 +49,12 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/login", "/register", "/login/admin"],
+  matcher: [
+    "/admin/:path*",
+    "/user/:path*",
+    "/login",
+    "/register",
+    "/login/admin",
+    "/update-password",
+  ],
 }

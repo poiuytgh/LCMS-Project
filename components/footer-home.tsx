@@ -9,11 +9,14 @@ export function FooterHome() {
             <span>© 2025 LCMS - ระบบสัญญาเช่าพื้นที่</span>
           </div>
           <div className="flex items-center space-x-6">
-            <Link href="/about" className="hover:text-white transition-colors">
+            <Link href="/user/about" className="hover:text-white transition-colors">
               เกี่ยวกับเรา
             </Link>
-            <Link href="/privacy" className="hover:text-white transition-colors">
+            <Link href="/user/privacy" className="hover:text-white transition-colors">
               นโยบายความเป็นส่วนตัว
+            </Link>
+            <Link href="/user/terms" className="hover:text-white transition-colors">
+              ข้อกำหนดการใช้งาน
             </Link>
           </div>
         </div>

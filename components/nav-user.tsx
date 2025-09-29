@@ -24,8 +24,9 @@ const AVATAR_BUCKET = "avatars";
 /** ถ้าใช้ private bucket ให้ตั้งเป็น false แล้วจะสร้าง signed URL ให้อัตโนมัติ */
 const BUCKET_PUBLIC = true;
 
-/** ต้องตรงกับหน้ารายการโปรไฟล์ */
+/** ต้องตรงกับหน้าโปรไฟล์ */
 const PROFILE_AVATAR_UPDATED_EVENT = "profile:avatar-updated";
+const PROFILE_INFO_UPDATED_EVENT = "profile:info-updated";
 
 type ProfileRow = {
   avatar_url: string | null;
@@ -40,9 +41,10 @@ export function NavUser() {
   const { user, signOut } = useAuth();
   const { notifications, unreadCount, markAsRead } = useNotifications();
 
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [lastName, setLastName] = useState<string | null>(null);
   const [rawAvatar, setRawAvatar] = useState<string | null>(null); // public URL หรือ object path
   const [signedUrl, setSignedUrl] = useState<string | null>(null); // สำหรับ private bucket
-  const [initials, setInitials] = useState<string>("U");
 
   const makeInitials = useCallback(
     (first?: string | null, last?: string | null) => {
@@ -56,7 +58,12 @@ export function NavUser() {
     [user?.email]
   );
 
-  // โหลด avatar/ชื่อครั้งแรก
+  const initials = useMemo(
+    () => makeInitials(firstName, lastName),
+    [firstName, lastName, makeInitials]
+  );
+
+  /** โหลด avatar/ชื่อ ครั้งแรก */
   useEffect(() => {
     if (!user) return;
     (async () => {
@@ -64,26 +71,32 @@ export function NavUser() {
         .from("profiles")
         .select("avatar_url, first_name, last_name")
         .eq("id", user.id)
-        .maybeSingle<ProfileRow>();
+        .maybeSingle();
+
       if (error) {
         console.error(error);
         return;
       }
-      if (data) {
-        setRawAvatar(data.avatar_url ?? null);
-        setInitials(makeInitials(data.first_name, data.last_name));
+
+      const row = (data as ProfileRow) ?? null;
+      if (row) {
+        setRawAvatar(row.avatar_url ?? null);
+        setFirstName(row.first_name ?? null);
+        setLastName(row.last_name ?? null);
       } else {
         const fn = (user as any)?.user_metadata?.first_name ?? null;
         const ln = (user as any)?.user_metadata?.last_name ?? null;
-        setInitials(makeInitials(fn, ln));
+        setFirstName(fn);
+        setLastName(ln);
         setRawAvatar(null);
       }
     })();
-  }, [user?.id, supabase, makeInitials]);
+  }, [user?.id, supabase]);
 
-  // ฟัง Realtime เปลี่ยนโปรไฟล์ (ถ้าเปิด)
+  /** Realtime จากตาราง profiles */
   useEffect(() => {
     if (!user) return;
+
     const channel = supabase
       .channel("profiles-navuser")
       .on(
@@ -92,27 +105,41 @@ export function NavUser() {
         (payload) => {
           const row = payload.new as ProfileRow;
           setRawAvatar(row.avatar_url ?? null);
-          setInitials(makeInitials(row.first_name, row.last_name));
+          setFirstName(row.first_name ?? null);
+          setLastName(row.last_name ?? null);
         }
       )
       .subscribe();
 
+    // ❗ cleanup ต้องไม่คืน Promise
     return () => {
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel); // fire-and-forget
     };
-  }, [user?.id, supabase, makeInitials]);
+  }, [user?.id, supabase]);
 
-  // ฟัง event ภายในแท็บ (ฟอลแบ็กกรณีไม่ได้เปิด Realtime)
+  /** ฟัง event ภายในแท็บ (อัปโหลดรูป/แก้ชื่อจากหน้าโปรไฟล์) */
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as string | null;
-      setRawAvatar(detail ?? null);
+    const onAvatar = (e: Event) => {
+      const detail = (e as CustomEvent<string | null>).detail ?? null;
+      setRawAvatar(detail);
     };
-    window.addEventListener(PROFILE_AVATAR_UPDATED_EVENT, handler as EventListener);
-    return () => window.removeEventListener(PROFILE_AVATAR_UPDATED_EVENT, handler as EventListener);
+    const onInfo = (e: Event) => {
+      const detail = (e as CustomEvent<{ first_name?: string | null; last_name?: string | null }>)
+        .detail || {};
+      if ("first_name" in detail) setFirstName(detail.first_name ?? null);
+      if ("last_name" in detail) setLastName(detail.last_name ?? null);
+    };
+
+    window.addEventListener(PROFILE_AVATAR_UPDATED_EVENT, onAvatar as EventListener);
+    window.addEventListener(PROFILE_INFO_UPDATED_EVENT, onInfo as EventListener);
+
+    return () => {
+      window.removeEventListener(PROFILE_AVATAR_UPDATED_EVENT, onAvatar as EventListener);
+      window.removeEventListener(PROFILE_INFO_UPDATED_EVENT, onInfo as EventListener);
+    };
   }, []);
 
-  // ถ้าเป็น private bucket -> ขอ signed URL ทุกครั้งที่ path เปลี่ยน
+  /** ถ้าเป็น private bucket -> ขอ signed URL ทุกครั้งที่ path เปลี่ยน */
   useEffect(() => {
     if (BUCKET_PUBLIC) {
       setSignedUrl(null);
@@ -123,7 +150,6 @@ export function NavUser() {
         setSignedUrl(null);
         return;
       }
-      // rawAvatar เป็น object path
       const { data, error } = await supabase.storage
         .from(AVATAR_BUCKET)
         .createSignedUrl(rawAvatar, 60 * 60); // 1 ชม.
@@ -165,11 +191,11 @@ export function NavUser() {
     });
 
   const navItems = [
-    { href: "/dashboard", label: "แดชบอร์ด" },
-    { href: "/dashboard/contracts", label: "สัญญาของฉัน" },
-    { href: "/dashboard/bills", label: "บิลค่าเช่า" },
-    { href: "/dashboard/support", label: "แจ้งปัญหา" },
-    { href: "/dashboard/profile", label: "โปรไฟล์" },
+    { href: "/user/dashboard", label: "แดชบอร์ด" },
+    { href: "/user/dashboard/contracts", label: "สัญญาของฉัน" },
+    { href: "/user/dashboard/bills", label: "บิลค่าเช่า" },
+    { href: "/user/dashboard/support", label: "แจ้งปัญหา" },
+    { href: "/user/dashboard/profile", label: "โปรไฟล์" },
   ];
 
   return (
@@ -278,7 +304,7 @@ export function NavUser() {
                   asChild
                   className="rounded-lg px-3 py-2 text-sm hover:bg-muted data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
                 >
-                  <Link href="/dashboard/profile">โปรไฟล์ของฉัน</Link>
+                  <Link href="/user/dashboard/profile">โปรไฟล์ของฉัน</Link>
                 </DropdownMenuItem>
 
                 <DropdownMenuItem

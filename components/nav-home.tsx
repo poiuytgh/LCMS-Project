@@ -30,7 +30,7 @@ export function NavHome() {
                 size="sm"
                 className="flex items-center gap-2 bg-white text-[#212121] hover:bg-gray-200"
               >
-                <Link href="/dashboard">
+                <Link href="/user/dashboard">
                   <LayoutDashboard className="h-4 w-4" />
                   <span>ไปแดชบอร์ด</span>
                 </Link>

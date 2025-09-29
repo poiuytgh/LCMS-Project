@@ -19,7 +19,8 @@ export default function HomePage() {
       <section
         className="relative bg-cover bg-center bg-no-repeat py-24 px-4"
         style={{
-          backgroundImage: "linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url('/images/hero-bg.jpg')",
+          backgroundImage:
+            "linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)), url('/images/hero-bg.jpg')",
         }}
       >
         <div className="container mx-auto text-center text-white">
@@ -39,7 +40,7 @@ export default function HomePage() {
                   <span className="text-sm">คุณได้เข้าสู่ระบบแล้ว</span>
                 </div>
                 <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-3">
-                  <Link href="/dashboard" aria-label="ไปแดชบอร์ด">
+                  <Link href="/user/dashboard" aria-label="ไปแดชบอร์ด">
                     <LayoutDashboard className="h-5 w-5 mr-2" /> ไปแดชบอร์ด
                   </Link>
                 </Button>
@@ -47,9 +48,7 @@ export default function HomePage() {
             ) : (
               <>
                 <Button asChild size="lg" className="bg-primary hover:bg-primary/90 text-lg px-8 py-3">
-                  <Link href="/login" aria-label="เข้าสู่ระบบ">
-                    เข้าสู่ระบบ
-                  </Link>
+                  <Link href="/login" aria-label="เข้าสู่ระบบ">เข้าสู่ระบบ</Link>
                 </Button>
                 <Button
                   asChild
@@ -173,7 +172,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             {user ? (
               <Button asChild size="lg" className="text-lg px-8 py-3 bg-white text-primary hover:bg-gray-100">
-                <Link href="/dashboard">ไปแดชบอร์ด</Link>
+                <Link href="/user/dashboard">ไปแดชบอร์ด</Link>
               </Button>
             ) : (
               <>

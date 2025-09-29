@@ -225,12 +225,12 @@ export default function RegisterPage() {
                 />
                 <Label htmlFor="terms" className="text-sm">
                   ยอมรับ{" "}
-                  <Link href="/terms" className="text-primary hover:underline">
+                  <Link href="/user/terms" className="text-primary hover:underline">
                     เงื่อนไขการใช้งาน
                   </Link>{" "}
                   และ{" "}
                   <Link
-                    href="/privacy"
+                    href="/user/privacy"
                     className="text-primary hover:underline"
                   >
                     นโยบายความเป็นส่วนตัว

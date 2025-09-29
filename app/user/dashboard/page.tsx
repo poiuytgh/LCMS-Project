@@ -203,7 +203,7 @@ export default function DashboardPage() {
                 สัญญาเช่าของฉัน
               </h2>
               <Button asChild variant="outline" size="sm">
-                <Link href="/dashboard/contracts">ดูทั้งหมด</Link>
+                <Link href="/user/dashboard/contracts">ดูทั้งหมด</Link>
               </Button>
             </div>
 
@@ -265,7 +265,7 @@ export default function DashboardPage() {
                 บิลค่าเช่าล่าสุด
               </h2>
               <Button asChild variant="outline" size="sm">
-                <Link href="/dashboard/bills">ดูทั้งหมด</Link>
+                <Link href="/user/dashboard/bills">ดูทั้งหมด</Link>
               </Button>
             </div>
 
@@ -358,19 +358,19 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="space-y-3">
                   <Button asChild className="w-full justify-start bg-transparent" variant="outline">
-                    <Link href="/dashboard/support">
+                    <Link href="/user/dashboard/support">
                       <AlertCircle className="h-4 w-4 mr-2" />
                       แจ้งปัญหาการใช้งาน
                     </Link>
                   </Button>
                   <Button asChild className="w-full justify-start bg-transparent" variant="outline">
-                    <Link href="/dashboard/bills">
+                    <Link href="/user/dashboard/bills">
                       <CreditCard className="h-4 w-4 mr-2" />
                       ตรวจสอบบิลค่าเช่า
                     </Link>
                   </Button>
                   <Button asChild className="w-full justify-start bg-transparent" variant="outline">
-                    <Link href="/dashboard/contracts">
+                    <Link href="/user/dashboard/contracts">
                       <FileText className="h-4 w-4 mr-2" />
                       ดูสัญญาเช่าทั้งหมด
                     </Link>

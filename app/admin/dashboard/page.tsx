@@ -1,105 +1,148 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { NavAdmin } from "@/components/nav-admin"
-import { FileText, Building2, CreditCard, AlertCircle, TrendingUp, Calendar, DollarSign } from "lucide-react"
-import { toast } from "sonner"
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { NavAdmin } from "@/components/nav-admin";
+import {
+  FileText,
+  Building2,
+  CreditCard,
+  AlertCircle,
+  TrendingUp,
+  Calendar,
+  DollarSign,
+} from "lucide-react";
+import { toast } from "sonner";
 
 interface DashboardStats {
   contracts: {
-    total: number
-    active: number
-    expiring: number
-    expired: number
-  }
+    total: number;
+    active: number;
+    expiring: number;
+    expired: number;
+  };
   spaces: {
-    total: number
-    available: number
-    occupied: number
-    maintenance: number
-  }
+    total: number;
+    available: number;
+    occupied: number;
+    maintenance: number;
+  };
   finance: {
-    monthlyRevenue: number
-    paid: number
-    unpaid: number
-    pending: number
-  }
+    monthlyRevenue: number;
+    paid: number;
+    unpaid: number;
+    pending: number;
+  };
   support: {
-    new: number
-    needInfo: number
-    overdue: number
-    total: number
-  }
+    new: number;
+    needInfo: number;
+    overdue: number;
+    total: number;
+  };
 }
 
 interface ExpiringContract {
-  id: string
-  tenant_name: string
-  space_name: string
-  end_date: string
+  id: string;
+  tenant_name: string;
+  space_name: string;
+  end_date: string;
 }
 
 interface OverdueBill {
-  id: string
-  tenant_name: string
-  space_name: string
-  total_amount: number
-  due_date: string
+  id: string;
+  tenant_name: string;
+  space_name: string;
+  total_amount: number;
+  due_date: string;
 }
 
+type SummaryResponse = {
+  contracts: DashboardStats["contracts"];
+  spaces: DashboardStats["spaces"];
+  finance: DashboardStats["finance"];
+  support: DashboardStats["support"];
+  expiringContracts: ExpiringContract[];
+  overdueBills: OverdueBill[];
+  error?: string;
+};
+
 export default function AdminDashboardPage() {
+  const router = useRouter();
+
   const [stats, setStats] = useState<DashboardStats>({
     contracts: { total: 0, active: 0, expiring: 0, expired: 0 },
     spaces: { total: 0, available: 0, occupied: 0, maintenance: 0 },
     finance: { monthlyRevenue: 0, paid: 0, unpaid: 0, pending: 0 },
     support: { new: 0, needInfo: 0, overdue: 0, total: 0 },
-  })
-  const [expiringContracts, setExpiringContracts] = useState<ExpiringContract[]>([])
-  const [overdueBills, setOverdueBills] = useState<OverdueBill[]>([])
-  const [loading, setLoading] = useState(true)
+  });
+  const [expiringContracts, setExpiringContracts] = useState<ExpiringContract[]>([]);
+  const [overdueBills, setOverdueBills] = useState<OverdueBill[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [])
+    const ac = new AbortController();
 
-  const fetchDashboardData = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/summary", {
-        headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_ADMIN_SEED_SECRET}`,
-        },
-      })
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/dashboard/summary", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+          signal: ac.signal,
+        });
 
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+        // ไม่มีคุกกี้แอดมินหรือหมดอายุ → กลับหน้า login/admin
+        if (res.status === 401 || res.status === 403) {
+          router.replace("/login/admin");
+          return;
+        }
 
-      setStats({
-        contracts: data.contracts,
-        spaces: data.spaces,
-        finance: data.finance,
-        support: data.support,
-      })
-      setExpiringContracts(data.expiringContracts || [])
-      setOverdueBills(data.overdueBills || [])
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error)
-      toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูล")
-    } finally {
-      setLoading(false)
-    }
-  }
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || `HTTP ${res.status}`);
+        }
+
+        const data: SummaryResponse = await res.json();
+
+        setStats({
+          contracts: data.contracts,
+          spaces: data.spaces,
+          finance: data.finance,
+          support: data.support,
+        });
+        setExpiringContracts(data.expiringContracts || []);
+        setOverdueBills(data.overdueBills || []);
+      } catch (err: any) {
+        if (ac.signal.aborted) return; // เผื่อ unmount ไปแล้ว
+        console.error("Error fetching dashboard data:", err);
+        // ถ้าเป็น network/อื่นๆ ให้แจ้งเตือน
+        toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+      } finally {
+        if (!ac.signal.aborted) setLoading(false);
+      }
+    })();
+
+    return () => ac.abort();
+  }, [router]);
 
   const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(amount)
+    new Intl.NumberFormat("th-TH", { style: "currency", currency: "THB" }).format(amount);
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString("th-TH", {
       year: "numeric",
       month: "short",
       day: "numeric",
-    })
+    });
 
   if (loading) {
     return (
@@ -107,12 +150,12 @@ export default function AdminDashboardPage() {
         <NavAdmin />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4" />
             <p>กำลังโหลดข้อมูล...</p>
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -138,7 +181,9 @@ export default function AdminDashboardPage() {
                 <div className="text-2xl font-bold">{stats.contracts.total}</div>
                 <div className="flex gap-2 mt-2 text-xs">
                   <Badge variant="secondary">{stats.contracts.active} ใช้งาน</Badge>
-                  <Badge className="bg-yellow-100 text-yellow-800">{stats.contracts.expiring} ใกล้หมด</Badge>
+                  <Badge className="bg-yellow-100 text-yellow-800">
+                    {stats.contracts.expiring} ใกล้หมด
+                  </Badge>
                   <Badge variant="destructive">{stats.contracts.expired} หมดอายุ</Badge>
                 </div>
               </CardContent>
@@ -167,7 +212,9 @@ export default function AdminDashboardPage() {
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(stats.finance.monthlyRevenue)}</div>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(stats.finance.monthlyRevenue)}
+                </div>
                 <div className="flex gap-2 mt-2 text-xs">
                   <Badge className="bg-green-100 text-green-800">{stats.finance.paid} ชำระแล้ว</Badge>
                   <Badge className="bg-yellow-100 text-yellow-800">{stats.finance.pending} รอตรวจ</Badge>
@@ -216,13 +263,17 @@ export default function AdminDashboardPage() {
                           <p className="text-xs text-muted-foreground">{contract.space_name}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-medium text-yellow-700">{formatDate(contract.end_date)}</p>
+                          <p className="text-sm font-medium text-yellow-700">
+                            {formatDate(contract.end_date)}
+                          </p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">ไม่มีสัญญาที่ใกล้หมดอายุ</p>
+                  <p className="text-muted-foreground text-center py-4">
+                    ไม่มีสัญญาที่ใกล้หมดอายุ
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -248,14 +299,18 @@ export default function AdminDashboardPage() {
                           <p className="text-xs text-muted-foreground">{bill.space_name}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-medium text-red-700">{formatCurrency(bill.total_amount)}</p>
+                          <p className="text-sm font-medium text-red-700">
+                            {formatCurrency(bill.total_amount)}
+                          </p>
                           <p className="text-xs text-red-600">เกิน {formatDate(bill.due_date)}</p>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground text-center py-4">ไม่มีบิลค้างชำระ</p>
+                  <p className="text-muted-foreground text-center py-4">
+                    ไม่มีบิลค้างชำระ
+                  </p>
                 )}
               </CardContent>
             </Card>
@@ -275,7 +330,9 @@ export default function AdminDashboardPage() {
                 <div className="text-center">
                   <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground">กราฟรายได้จะแสดงที่นี่</p>
-                  <p className="text-sm text-muted-foreground mt-1">ใช้ Recharts หรือ Chart.js สำหรับการแสดงผล</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ใช้ Recharts หรือ Chart.js สำหรับการแสดงผล
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -283,5 +340,5 @@ export default function AdminDashboardPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -27,6 +27,7 @@ type NavAdminProps = {
 function getInitials(name?: string) {
   if (!name) return "AD";
   const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "AD";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
@@ -39,40 +40,57 @@ export function NavAdmin({ adminName, avatarUrl }: NavAdminProps) {
   const [name, setName] = useState<string>(adminName || "ผู้ดูแลระบบ");
   const [avatar, setAvatar] = useState<string>(avatarUrl || "");
 
-  // โหลดจาก localStorage + ฟัง event อัปเดตสด
+  // โหลดจาก localStorage + ฟังอัปเดตสด
   useEffect(() => {
     const load = () => {
-      const n = adminName ?? localStorage.getItem(LS_NAME) ?? "ผู้ดูแลระบบ";
-      const a = avatarUrl ?? localStorage.getItem(LS_AVATAR) ?? "";
-      setName(n);
-      setAvatar(a);
+      try {
+        const n = adminName ?? (typeof window !== "undefined" ? localStorage.getItem(LS_NAME) : null) ?? "ผู้ดูแลระบบ";
+        const a = avatarUrl ?? (typeof window !== "undefined" ? localStorage.getItem(LS_AVATAR) : null) ?? "";
+        setName(n);
+        setAvatar(a);
+      } catch {
+        // ignore
+      }
     };
     load();
 
     const onUpdated = () => load();
-    window.addEventListener("admin-profile-updated", onUpdated);
-    window.addEventListener("storage", onUpdated); // เผื่ออัปเดตข้ามแท็บ
-
+    if (typeof window !== "undefined") {
+      window.addEventListener("admin-profile-updated", onUpdated as EventListener);
+      window.addEventListener("storage", onUpdated as EventListener);
+    }
     return () => {
-      window.removeEventListener("admin-profile-updated", onUpdated);
-      window.removeEventListener("storage", onUpdated);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("admin-profile-updated", onUpdated as EventListener);
+        window.removeEventListener("storage", onUpdated as EventListener);
+      }
     };
   }, [adminName, avatarUrl]);
 
   const initials = useMemo(() => getInitials(name), [name]);
-  const avatarSrc = avatar;
+  const avatarSrc = avatar || "";
 
   const handleSignOut = async () => {
     try {
-      const response = await fetch("/api/admin-logout", { method: "POST" });
-      if (response.ok) {
-        toast.success("ออกจากระบบสำเร็จ");
-        router.push("/login/admin");
-      } else {
-        toast.error("เกิดข้อผิดพลาดในการออกจากระบบ");
+      const res = await fetch("/api/admin/admin-logout", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data?.error ?? "เกิดข้อผิดพลาดในการออกจากระบบ");
+        return;
       }
+
+      // เคลียร์ค่า client-side กัน UI ค้าง
+      try {
+        localStorage.removeItem(LS_NAME);
+        localStorage.removeItem(LS_AVATAR);
+      } catch {
+        // ignore
+      }
+
+      toast.success("ออกจากระบบสำเร็จ");
+      router.replace("/login/admin");
     } catch {
-      toast.error("เกิดข้อผิดพลาดในการออกจากระบบ");
+      toast.error("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
     }
   };
 
@@ -87,29 +105,27 @@ export function NavAdmin({ adminName, avatarUrl }: NavAdminProps) {
     { href: "/admin/profile", label: "โปรไฟล์" },
   ];
 
+  // ใช้ startsWith เพื่อให้เมนู active เมื่อตรงเส้นทางย่อยด้วย
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
   return (
     <nav className="bg-secondary border-b border-gray-700 shadow-sm">
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-14">
           {/* Navigation Links */}
           <div className="flex items-center space-x-6">
-            {navItems.map((item) => {
-              const isActive = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "px-2 py-1 text-sm font-medium transition-colors",
-                    isActive
-                      ? "text-white font-semibold"
-                      : "text-gray-400 hover:text-white"
-                  )}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "px-2 py-1 text-sm font-medium transition-colors",
+                  isActive(item.href) ? "text-white font-semibold" : "text-gray-400 hover:text-white"
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
           </div>
 
           {/* Right side - Notifications & Profile */}
@@ -138,7 +154,7 @@ export function NavAdmin({ adminName, avatarUrl }: NavAdminProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Profile Avatar / Initials */}
+            {/* Profile */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button aria-label="เปิดเมนูโปรไฟล์">
